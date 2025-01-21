@@ -8,5 +8,10 @@
     "sourceMap": true,
     "rootDir": "src",
     "strict": true,
+    "paths": {
+      "@my/*": [
+        "./src/*"
+      ]
+    }
   }
 }
