@@ -36,8 +36,12 @@
     "watch-tests": "tsc -p . -w --outDir out",
     "pretest": "npm run compile-tests && npm run compile && npm run lint",
     "check-types": "tsc --noEmit",
+    "prepare": "husky",
     "lint": "eslint src",
     "test": "vscode-test"
+  },
+  "lint-staged": {
+    "*.{js,mjs,ts}": "eslint"
   },
   "devDependencies": {
     "@stylistic/eslint-plugin": "^2.13.0",
@@ -49,6 +53,8 @@
     "eslint-plugin-jsdoc": "^50.6.2",
     "eslint-plugin-perfectionist": "^4.7.0",
     "globals": "^15.14.0",
+    "husky": "^9.1.7",
+    "lint-staged": "^15.4.1",
     "npm-run-all": "^4.1.5",
     "typescript": "^5.7.3",
     "typescript-eslint": "^8.21.0"
