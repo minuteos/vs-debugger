@@ -2,6 +2,7 @@ import * as esbuild from 'esbuild'
 
 const production = process.argv.includes('--production')
 const watch = process.argv.includes('--watch')
+const minify = process.argv.includes('--minify')
 
 /**
  * @type {import('esbuild').Plugin}
@@ -29,7 +30,7 @@ const ctx = await esbuild.context({
   ],
   bundle: true,
   format: 'cjs',
-  minify: production,
+  minify: minify || production,
   sourcemap: !production,
   sourcesContent: false,
   platform: 'node',
@@ -38,6 +39,10 @@ const ctx = await esbuild.context({
     'vscode',
   ],
   logLevel: 'silent',
+  define: {
+    '$trace': '{}',
+    '$trace.dap': production ? 'false' : 'true',
+  },
   plugins: [
     esbuildProblemMatcherPlugin,
   ],
@@ -45,8 +50,7 @@ const ctx = await esbuild.context({
 
 if (watch) {
   await ctx.watch()
-}
-else {
+} else {
   await ctx.rebuild()
   await ctx.dispose()
 }

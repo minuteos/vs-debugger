@@ -16,7 +16,9 @@
   "categories": [
     "Debuggers"
   ],
-  "activationEvents": [],
+  "activationEvents": [
+    "onDebugResolve:minute-debug"
+  ],
   "keywords": [
     "minuteos",
     "gdb",
@@ -25,6 +27,18 @@
     "microcontroller",
     "embedded"
   ],
+  "contributes": {
+    "debuggers": [
+      {
+        "label": "minuteDebug",
+        "type": "minute-debug",
+        "languages": [
+          "c",
+          "cpp"
+        ]
+      }
+    ]
+  },
   "scripts": {
     "vscode:prepublish": "npm run package",
     "compile": "npm run check-types && npm run lint && node esbuild.mjs",
@@ -47,6 +61,7 @@
     "@stylistic/eslint-plugin": "^2.13.0",
     "@types/node": "20.x",
     "@types/vscode": "^1.96.0",
+    "@vscode/debugadapter": "^1.68.0",
     "@vscode/test-cli": "^0.0.10",
     "@vscode/test-electron": "^2.4.1",
     "esbuild": "^0.24.2",
