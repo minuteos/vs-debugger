@@ -1,11 +1,14 @@
 .vscode/**
 .vscode-test/**
+.husky/**
 out/**
 node_modules/**
 src/**
+dist/package*.json
+dist/node_modules/.package*
 .gitignore
 .yarnrc
-esbuild.js
+esbuild.mjs
 vsc-extension-quickstart.md
 **/tsconfig.json
 **/eslint.config.mjs

@@ -1,8 +1,11 @@
+import child_process from 'child_process'
 import * as esbuild from 'esbuild'
+import fs from 'fs/promises'
 
 const production = process.argv.includes('--production')
 const watch = process.argv.includes('--watch')
 const minify = process.argv.includes('--minify')
+const packages = process.argv.includes('--packages')
 
 /**
  * @type {import('esbuild').Plugin}
@@ -37,6 +40,7 @@ const ctx = await esbuild.context({
   outfile: 'dist/extension.js',
   external: [
     'vscode',
+    'usb',
   ],
   logLevel: 'silent',
   define: {
@@ -47,6 +51,16 @@ const ctx = await esbuild.context({
     esbuildProblemMatcherPlugin,
   ],
 })
+
+if (packages) {
+  await fs.mkdir('dist', { recursive: true })
+  await fs.copyFile('package.json', 'dist/package.json')
+  await fs.copyFile('package-lock.json', 'dist/package-lock.json')
+  await child_process.spawn('npm', ['install', '--ignore-scripts', '--omit', 'dev'], {
+    cwd: 'dist',
+    stdio: 'inherit',
+  })
+}
 
 if (watch) {
   await ctx.watch()
