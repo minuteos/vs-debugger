@@ -41,6 +41,7 @@ const ctx = await esbuild.context({
   external: [
     'vscode',
     'usb',
+    'serialport',
   ],
   logLevel: 'silent',
   plugins: [

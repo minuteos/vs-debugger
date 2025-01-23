@@ -87,6 +87,7 @@
     "typescript-eslint": "^8.21.0"
   },
   "dependencies": {
+    "serialport": "^13.0.0",
     "usb": "^2.14.0"
   }
 }
