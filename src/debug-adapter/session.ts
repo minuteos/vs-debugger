@@ -1,16 +1,13 @@
 import { ErrorCode } from '@my/errors'
-import { log } from '@my/services'
+import { getLog, getTrace, traceEnabled } from '@my/services'
 import { DebugSession, ErrorDestination, Response } from '@vscode/debugadapter'
 import { DebugProtocol } from '@vscode/debugprotocol'
 
 type DebugHandler = (response: DebugProtocol.Response, args: unknown, request: DebugProtocol.Request) => Promise<string | boolean>
 type DebugHandlers = Record<string, DebugHandler>
 
-function trace(dir: string, ...args: unknown[]) {
-  if ($trace.dap) {
-    log.debug(new Date().toISOString(), 'DAP', dir, ...args)
-  }
-}
+const log = getLog('DebugSession')
+const trace = getTrace('DAP')
 
 export class MinuteDebugSession extends DebugSession {
   // #region Command handlers
@@ -48,6 +45,8 @@ export class MinuteDebugSession extends DebugSession {
     }
 
     handler().catch((error: unknown) => {
+      log.error('Error handling command', request.command, error)
+
       const resp = new Response(request)
       let code = ErrorCode.Unknown
       let format = 'Unknown error handling {command} request: {error}'
@@ -87,7 +86,7 @@ export class MinuteDebugSession extends DebugSession {
 
   sendRequest(command: string, args: unknown, timeout: number, cb: (response: DebugProtocol.Response) => void): void {
     trace('=>', command, args, timeout)
-    super.sendRequest(command, args, timeout, $trace.dap
+    super.sendRequest(command, args, timeout, traceEnabled('dap')
       ? (response) => {
           trace('=<', command, response)
           cb(response)

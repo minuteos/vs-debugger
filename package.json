@@ -28,6 +28,18 @@
     "embedded"
   ],
   "contributes": {
+    "configuration": {
+      "title": "minuteDebug",
+      "properties": {
+        "minuteDebug.trace": {
+          "type": "array",
+          "description": "Enable trace output for various components",
+          "items": {
+            "type": "string"
+          }
+        }
+      }
+    },
     "debuggers": [
       {
         "label": "minuteDebug",

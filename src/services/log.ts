@@ -1,3 +1,5 @@
+import * as vscode from 'vscode'
+
 /**
  * Simple logger interface, compatible with the global console
  */
@@ -31,6 +33,64 @@ export interface Logger {
    * @param args Log content
    */
   debug(...args: unknown[]): void
+
+  /**
+   * Logs a message at the trace level
+   * @param args Log content
+   */
+  trace(...args: unknown[]): void
 }
 
-export const log: Logger = console
+export type LogLevel = 'error' | 'warn' | 'info' | 'log' | 'debug' | 'trace'
+
+export class CallbackLogger implements Logger {
+  constructor(readonly callback: (level: LogLevel, ...args: unknown[]) => void) {}
+
+  error(...args: unknown[]): void {
+    this.callback('error', ...args)
+  }
+
+  warn(...args: unknown[]): void {
+    this.callback('warn', ...args)
+  }
+
+  info(...args: unknown[]): void {
+    this.callback('info', ...args)
+  }
+
+  log(...args: unknown[]): void {
+    this.callback('log', ...args)
+  }
+
+  debug(...args: unknown[]): void {
+    this.callback('debug', ...args)
+  }
+
+  trace(...args: unknown[]): void {
+    this.callback('trace', ...args)
+  }
+}
+
+const logOutputChannel = vscode.window.createOutputChannel('minuteDebug', {
+  log: true })
+
+export const log: Logger = new CallbackLogger((level, ...args) => {
+  if (level !== 'trace') {
+    // do not log trace to VS Code console
+    console[level](...args)
+  }
+  if (level === 'log') {
+    // log output channel doesn't support a 'default' log level
+    level = 'info'
+  }
+  const [message, ...rest] = args
+  logOutputChannel[level](String(message), ...rest)
+})
+
+export function getLog(category: string, parent?: Logger): Logger {
+  parent ??= log
+  category = `[${category}]`
+  return new CallbackLogger((level, ...args) => {
+    parent[level](category, ...args)
+  })
+}

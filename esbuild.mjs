@@ -43,10 +43,6 @@ const ctx = await esbuild.context({
     'usb',
   ],
   logLevel: 'silent',
-  define: {
-    '$trace': '{}',
-    '$trace.dap': production ? 'false' : 'true',
-  },
   plugins: [
     esbuildProblemMatcherPlugin,
   ],
