@@ -31,7 +31,9 @@ export default tseslint.config(
     plugins: { perfectionist },
 
     rules: {
-      'perfectionist/sort-exports': 'error',
+      'perfectionist/sort-exports': ['error', {
+        partitionByNewLine: true,
+      }],
       'perfectionist/sort-imports': 'error',
     },
   },
