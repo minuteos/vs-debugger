@@ -94,3 +94,23 @@ export function getLog(category: string, parent?: Logger): Logger {
     parent[level](category, ...args)
   })
 }
+
+export function getExtraLog(name: string): Logger {
+  const channel = vscode.window.createOutputChannel(`minuteDebug - ${name}`, {
+    log: true })
+  return new CallbackLogger((level, ...args) => {
+    if (level === 'log') {
+      // log output channel doesn't support a 'default' log level
+      level = 'info'
+    }
+    const [message, ...rest] = args
+    channel[level](String(message), ...rest)
+  })
+}
+
+export function getRawLog(name: string): (text: string) => void {
+  const channel = vscode.window.createOutputChannel(`minuteDebug - ${name}`)
+  return (text) => {
+    channel.append(text)
+  }
+}
