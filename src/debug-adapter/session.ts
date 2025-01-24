@@ -1,5 +1,7 @@
 import { ErrorCode } from '@my/errors'
+import { GdbInstance } from '@my/gdb/instance'
 import { getLog, getTrace, traceEnabled } from '@my/services'
+import { findExecutable } from '@my/util'
 import { DebugSession, ErrorDestination, Response } from '@vscode/debugadapter'
 import { DebugProtocol } from '@vscode/debugprotocol'
 
@@ -10,6 +12,8 @@ const log = getLog('DebugSession')
 const trace = getTrace('DAP')
 
 export class MinuteDebugSession extends DebugSession {
+  private gdb?: GdbInstance
+
   // #region Command handlers
   /* eslint-disable @typescript-eslint/no-unused-vars */
 
@@ -18,12 +22,16 @@ export class MinuteDebugSession extends DebugSession {
     }
   }
 
-  command_launch(response: DebugProtocol.LaunchResponse, args: DebugProtocol.LaunchRequestArguments) {
-    // TODO
+  async command_launch(response: DebugProtocol.LaunchResponse, args: DebugProtocol.LaunchRequestArguments) {
+    const gdb = new GdbInstance()
+    await gdb.start(await findExecutable('arm-none-eabi-gdb'))
+    this.gdb = gdb
   }
 
-  command_disconnect(response: DebugProtocol.DisconnectResponse, args: DebugProtocol.DisconnectArguments) {
-    // TODO
+  async command_disconnect(response: DebugProtocol.DisconnectResponse, args: DebugProtocol.DisconnectArguments) {
+    const gdb = this.gdb
+    this.gdb = undefined
+    await gdb?.disposeAsync()
   }
 
   /* eslint-enable @typescript-eslint/no-unused-vars */
