@@ -37,6 +37,7 @@ const ctx = await esbuild.context({
   sourcemap: !production,
   sourcesContent: false,
   platform: 'node',
+  target: 'es2022',
   outfile: 'dist/extension.js',
   external: [
     'vscode',

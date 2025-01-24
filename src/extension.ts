@@ -1,4 +1,5 @@
 import * as vscode from 'vscode'
+import 'disposablestack/auto'
 
 import { MinuteDebugAdapterDescriptorFactory } from './debug-adapter/descriptor-factory'
 

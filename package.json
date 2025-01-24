@@ -76,6 +76,7 @@
     "@vscode/debugadapter": "^1.68.0",
     "@vscode/test-cli": "^0.0.10",
     "@vscode/test-electron": "^2.4.1",
+    "disposablestack": "^1.1.7",
     "esbuild": "^0.24.2",
     "eslint-plugin-jsdoc": "^50.6.2",
     "eslint-plugin-perfectionist": "^4.7.0",

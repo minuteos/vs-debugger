@@ -4,7 +4,8 @@
     "target": "ES2022",
     "lib": [
       "DOM",
-      "ES2022"
+      "ES2022",
+      "ESNext.Disposable"
     ],
     "sourceMap": true,
     "rootDir": "src",
