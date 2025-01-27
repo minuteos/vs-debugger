@@ -47,27 +47,37 @@ export class CallbackLogger implements Logger {
   constructor(readonly callback: (level: LogLevel, ...args: unknown[]) => void) {}
 
   error(...args: unknown[]): void {
-    this.callback('error', ...args)
+    this.handle('error', ...args)
   }
 
   warn(...args: unknown[]): void {
-    this.callback('warn', ...args)
+    this.handle('warn', ...args)
   }
 
   info(...args: unknown[]): void {
-    this.callback('info', ...args)
+    this.handle('info', ...args)
   }
 
   log(...args: unknown[]): void {
-    this.callback('log', ...args)
+    this.handle('log', ...args)
   }
 
   debug(...args: unknown[]): void {
-    this.callback('debug', ...args)
+    this.handle('debug', ...args)
   }
 
   trace(...args: unknown[]): void {
-    this.callback('trace', ...args)
+    this.handle('trace', ...args)
+  }
+
+  private handle(level: LogLevel, ...args: unknown[]) {
+    for (let i = 0; i < args.length; i++) {
+      const arg = args[i]
+      if (arg instanceof Error && arg.stack) {
+        args[i] = arg.stack
+      }
+    }
+    this.callback(level, ...args)
   }
 }
 
