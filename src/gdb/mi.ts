@@ -19,6 +19,7 @@ interface PendingCommand extends PromiseWithResolvers<MiCommandResult> {
   command: string
   onStatus?: (status: MiStatus) => void
   notify?: MiNotify[]
+  output?: string
 }
 
 export class GdbMi extends AsyncDisposableStack {
@@ -227,6 +228,9 @@ export class GdbMi extends AsyncDisposableStack {
         if (line) {
           log.error('Garbage after stream data', line)
         }
+        if (type === '@' && cmd) {
+          cmd.output = (cmd.output ?? '') + text
+        }
         this.callbacks?.stream?.(type as MiStreamType, text)
         return
       }
@@ -257,6 +261,7 @@ export class GdbMi extends AsyncDisposableStack {
               log.error('Result without pending command')
             } else {
               res.$notify = cmd.notify
+              res.$output = cmd.output
               traceCmd('<', cmd.token, cmd.command, res)
               cmd.resolve(res)
             }

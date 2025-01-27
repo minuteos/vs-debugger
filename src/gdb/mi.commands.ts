@@ -9,11 +9,12 @@ export type MiExecStatus = MiResult
 
 export interface MiCommandResult extends MiResult {
   $notify?: MiNotify[]
+  $output?: string
 }
 
 export interface MiCommands {
   targetSelect(type: 'extended-remote', address: string): Promise<MiCommandResult>
-  interpreterExec(...command: string[]): Promise<MiCommandResult>
+  interpreterExec(interpreter: 'console', ...command: string[]): Promise<MiCommandResult>
 
   // breakpoint commands
   breakAfter(breakpoint: number, count: number): Promise<MiCommandResult>
