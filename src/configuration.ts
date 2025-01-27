@@ -11,6 +11,8 @@ export interface QemuServerConfiguration {
 
 export interface BmpServerConfiguration {
   type: 'bmp'
+  port?: string
+  serial?: string
 }
 
 export type ServerConfiguration = QemuServerConfiguration | BmpServerConfiguration
