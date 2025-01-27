@@ -1,5 +1,6 @@
 import { getLog } from '@my/services'
 import { Settings, settings } from '@my/settings'
+import { getWildcardMatcher } from '@my/util'
 
 let categories: Record<string, boolean> | undefined
 
@@ -14,8 +15,7 @@ function getCache(): Record<string, boolean> {
     return cache.enabled
   }
 
-  const escape = (s: string) => s.replaceAll(/[.+*|]/g, '\\$&')
-  const match = new RegExp('^(' + settings.trace.map(escape).join('|').replace('\\*', '.*') + ')$', 'i')
+  const match = getWildcardMatcher(...settings.trace)
 
   return (cache = {
     settings,
