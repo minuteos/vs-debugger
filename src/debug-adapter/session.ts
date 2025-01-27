@@ -1,5 +1,7 @@
+import { LaunchConfiguration } from '@my/configuration'
 import { ErrorCode } from '@my/errors'
 import { GdbInstance } from '@my/gdb/instance'
+import { createGdbServer } from '@my/gdb/servers/factory'
 import { getLog, getTrace, traceEnabled } from '@my/services'
 import { findExecutable } from '@my/util'
 import { DebugSession, ErrorDestination, Response } from '@vscode/debugadapter'
@@ -23,9 +25,16 @@ export class MinuteDebugSession extends DebugSession {
   }
 
   async command_launch(response: DebugProtocol.LaunchResponse, args: DebugProtocol.LaunchRequestArguments) {
-    const gdb = new GdbInstance()
-    await gdb.start(await findExecutable('arm-none-eabi-gdb'))
+    const config = args as LaunchConfiguration
+    const gdb = new GdbInstance(config.program)
+    const server = createGdbServer(config)
+    await Promise.all([
+      gdb.start(await findExecutable('arm-none-eabi-gdb')),
+      server.start(),
+    ])
     this.gdb = gdb
+
+    await gdb.command.targetSelect('extended-remote', server.address)
   }
 
   async command_disconnect(response: DebugProtocol.DisconnectResponse, args: DebugProtocol.DisconnectArguments) {
