@@ -2,7 +2,7 @@ import { MiStreamType } from '@my/gdb/mi.events'
 import { ChildProcess, getLog, getRawLog } from '@my/services'
 
 import { GdbMi } from './mi'
-import { MiCommands } from './mi.commands'
+import { MiCommands, MiExecStatus } from './mi.commands'
 
 const log = getLog('GDB')
 const rawLog = getRawLog('GDB')
@@ -11,7 +11,7 @@ export class GdbInstance extends AsyncDisposableStack {
   private gdb?: ChildProcess
   private mi!: GdbMi
 
-  constructor(readonly program: string) {
+  constructor(readonly program: string, readonly onExec: (evt: MiExecStatus) => void) {
     super()
   }
 
@@ -36,6 +36,7 @@ export class GdbInstance extends AsyncDisposableStack {
       notify: (evt) => {
         void evt
       },
+      exec: this.onExec,
     }))
     this.mi = mi
 

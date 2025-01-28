@@ -1,11 +1,14 @@
 import { LaunchConfiguration } from '@my/configuration'
 import { ErrorCode } from '@my/errors'
 import { GdbInstance } from '@my/gdb/instance'
+import { MiCommands, MiExecStatus } from '@my/gdb/mi.commands'
 import { createGdbServer } from '@my/gdb/servers/factory'
 import { getLog, getTrace, traceEnabled } from '@my/services'
 import { findExecutable } from '@my/util'
-import { DebugSession, ErrorDestination, Response } from '@vscode/debugadapter'
+import { ContinuedEvent, DebugSession, ErrorDestination, Response, StoppedEvent } from '@vscode/debugadapter'
 import { DebugProtocol } from '@vscode/debugprotocol'
+
+import * as mi from './mi.mappings'
 
 type DebugHandler = (response: DebugProtocol.Response, args: unknown, request: DebugProtocol.Request) => Promise<string | boolean>
 type DebugHandlers = Record<string, DebugHandler>
@@ -15,6 +18,14 @@ const trace = getTrace('DAP')
 
 export class MinuteDebugSession extends DebugSession {
   private gdb?: GdbInstance
+
+  get command(): MiCommands {
+    const gdb = this.gdb
+    if (!gdb) {
+      throw new Error('GDB lost')
+    }
+    return gdb.command
+  }
 
   // #region Command handlers
   /* eslint-disable @typescript-eslint/no-unused-vars */
@@ -26,7 +37,9 @@ export class MinuteDebugSession extends DebugSession {
 
   async command_launch(response: DebugProtocol.LaunchResponse, args: DebugProtocol.LaunchRequestArguments) {
     const config = args as LaunchConfiguration
-    const gdb = new GdbInstance(config.program)
+    const gdb = new GdbInstance(config.program, (exec) => {
+      this.execStatusChange(exec)
+    })
     const server = createGdbServer(config)
     await Promise.all([
       gdb.start(await findExecutable('arm-none-eabi-gdb')),
@@ -43,7 +56,41 @@ export class MinuteDebugSession extends DebugSession {
     await gdb?.disposeAsync()
   }
 
+  async command_threads(response: DebugProtocol.ThreadsResponse) {
+    const res = await this.command.threadInfo()
+    response.body = {
+      threads: res.threads.map(mi.mapThreadInfo),
+    }
+  }
+
+  async command_stackTrace(response: DebugProtocol.StackTraceResponse, args: DebugProtocol.StackTraceArguments) {
+    const low = args.startFrame ?? 0
+    const high = low + (args.levels ?? 1000) - 1
+    const res = await this.command.stackListFrames(low, high)
+    response.body = {
+      stackFrames: res.stack.map(mi.mapStackFrame),
+    }
+  }
+
   /* eslint-enable @typescript-eslint/no-unused-vars */
+  // #endregion
+
+  // #region Execution status changes
+
+  private execStatusChange(evt: MiExecStatus) {
+    switch (evt.$class) {
+      case 'running':
+        if (evt.threadId === 'all') {
+          this.sendEvent(new ContinuedEvent(0, true))
+        } else {
+          this.sendEvent(new ContinuedEvent(evt.threadId))
+        }
+        break
+      case 'stopped':
+        this.sendEvent(new StoppedEvent(evt.reason, evt.threadId))
+        break
+    }
+  }
   // #endregion
 
   // #region Shared request handling
