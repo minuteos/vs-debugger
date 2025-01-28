@@ -1,5 +1,5 @@
 import { getLog, getTrace } from '@my/services'
-import { camelToKebab, promiseWithResolvers, PromiseWithResolvers, readLines, Signal } from '@my/util'
+import { camelToKebab, kebabToCamel, promiseWithResolvers, PromiseWithResolvers, readLines, Signal } from '@my/util'
 import { Sema } from 'async-sema'
 import { Readable, Writable } from 'stream'
 import { promisify } from 'util'
@@ -105,50 +105,48 @@ export class GdbMi extends AsyncDisposableStack {
     }
 
     function parseValue(): unknown {
-      return parseArrayOrTuple() ?? parseConstant()
+      return parseArray() ?? parseTuple() ?? parseConstant()
     }
 
-    function parseArrayOrTuple() {
-      const type = line[0]
-      if (type !== '[' && type !== '{') {
+    function parseArray(): unknown[] | undefined {
+      if (!line.startsWith('[')) {
         return undefined
       }
 
-      const end = type === '[' ? ']' : '}'
-      line = line.substring(1)
-
-      if (line.startsWith(end)) {
-        // empty
-        line = line.substring(1)
-        return type === '[' ? [] : {}
-      }
-
-      const res: Record<string, unknown> = {}
-      let hasResults = false
-      let count = 0
-      for (;;) {
+      const res = []
+      while (hasElements('[', ']')) {
         const val = parseValue()
         if (val !== undefined) {
-          res[count++] = val
+          res.push(val)
         } else {
           const [n, v] = parseResult()
           if (n) {
-            res[n] = v
-            hasResults = true
-            count++
+            // store the array element name as an extra property in the target object
+            if (typeof v === 'object' && v) {
+              (v as Record<string, unknown>).$type = n
+            }
+            res.push(v)
           }
-        }
-        if (line.startsWith(end)) {
-          break
-        } else if (line.startsWith(',')) {
-          line = line.substring(1)
-        } else {
-          error(`',' or '${end}' expected`, line)
-          break
         }
       }
 
-      return hasResults ? res : Object.values(res)
+      return res
+    }
+
+    function parseTuple(): Record<string, unknown> | undefined {
+      if (!line.startsWith('{')) {
+        return undefined
+      }
+
+      const res: Record<string, unknown> = {}
+      while (hasElements('{', '}')) {
+        const [n, v] = parseResult()
+        if (n) {
+          res[n] = v
+        }
+      }
+
+      return res
     }
 
     function parseConstant() {
@@ -199,13 +197,37 @@ export class GdbMi extends AsyncDisposableStack {
       const name = line.substring(0, eq)
       line = line.substring(eq + 1)
       const value = parseValue() ?? error('Failed to parse value', '')
-      return [name, value]
+      return [kebabToCamel(name), value]
     }
 
-    function error<T>(message: string, value: T): T {
+    function error<T>(message: string, value?: T): T {
       log.error(message, line)
       line = ''
-      return value
+      return value as T
+    }
+
+    function hasElements(start: string, end: string): boolean {
+      if (line.startsWith(start)) {
+        if (line[1] === end) {
+          line = line.substring(2)
+          return false
+        }
+        line = line.substring(1)
+        return true
+      }
+
+      if (line.startsWith(end)) {
+        line = line.substring(1)
+        return false
+      }
+
+      if (line.startsWith(',')) {
+        line = line.substring(1)
+        return true
+      }
+
+      error(`',' or '${end}' expected`)
+      return false
     }
 
     const token = parseToken()
@@ -268,7 +290,7 @@ export class GdbMi extends AsyncDisposableStack {
             break
 
           case '*':
-            this.callbacks?.exec?.(res)
+            this.callbacks?.exec?.(res as MiExecStatus)
             break
 
           case '+':
@@ -295,7 +317,7 @@ export class GdbMi extends AsyncDisposableStack {
     await this._send(line + '\n')
   }
 
-  private async execute(command: string, ...args: string[]): Promise<void> {
+  private async execute(command: string, ...args: string[]): Promise<MiCommandResult> {
     const token = this.nextToken++
     traceCmd('>', token, command, args)
     const p = promiseWithResolvers<MiCommandResult>()
@@ -307,7 +329,7 @@ export class GdbMi extends AsyncDisposableStack {
     }
     try {
       await this.send(`${token.toString()}-${camelToKebab(command)} ${args.join(' ')}`)
-      await p.promise
+      return await p.promise
     } finally {
       this.pendingCommand = undefined
       this.commandSema.release()
