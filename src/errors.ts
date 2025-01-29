@@ -2,6 +2,8 @@ import { MiCommandErrorResult } from '@my/gdb/mi.commands'
 
 export enum ErrorCode {
   LaunchError = 100,
+  EvaluationError = 110,
+  ConsoleEvaluationError = 111,
 
   Unknown = 999,
 }

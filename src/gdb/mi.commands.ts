@@ -72,6 +72,9 @@ export interface MiCommands {
 
   // stack commands
   stackListFrames(lowFrame?: number, highFrame?: number, opts?: { noFrameFilters: boolean }): Promise<StackListFramesCommandResult>
+
+  // variable commands
+  varCreate(name: string, frameAddr: string, expression: string): Promise<VariableCreateCommandResult>
 }
 
 export interface BreakpointInfo {
@@ -137,4 +140,15 @@ export interface ThreadSelectCommandResult extends MiCommandResult {
 
 export interface StackListFramesCommandResult extends MiCommandResult {
   stack: FrameInfo[]
+}
+
+export interface VariableCreateCommandResult extends MiCommandResult {
+  name: string
+  numchild: number
+  value: string
+  type: string
+  threadId?: number
+  hasMore?: number
+  dynamic?: number
+  displayhint?: string
 }

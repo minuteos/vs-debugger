@@ -1,11 +1,11 @@
 import { LaunchConfiguration } from '@my/configuration'
-import { ErrorCode } from '@my/errors'
+import { configureError, ErrorCode, ErrorDestination } from '@my/errors'
 import { GdbInstance } from '@my/gdb/instance'
-import { MiCommands, MiExecStatus } from '@my/gdb/mi.commands'
+import { FrameInfo, MiCommands, MiExecStatus } from '@my/gdb/mi.commands'
 import { createGdbServer } from '@my/gdb/servers/factory'
 import { getLog, getTrace, traceEnabled } from '@my/services'
 import { findExecutable } from '@my/util'
-import { ContinuedEvent, DebugSession, ErrorDestination, Response, StoppedEvent } from '@vscode/debugadapter'
+import { ContinuedEvent, DebugSession, Response, Scope, StoppedEvent } from '@vscode/debugadapter'
 import { DebugProtocol } from '@vscode/debugprotocol'
 
 import * as mi from './mi.mappings'
@@ -63,12 +63,58 @@ export class MinuteDebugSession extends DebugSession {
     }
   }
 
+  frameIdMap = new Map<number, FrameInfo>()
+
   async command_stackTrace(response: DebugProtocol.StackTraceResponse, args: DebugProtocol.StackTraceArguments) {
     const low = args.startFrame ?? 0
     const high = low + (args.levels ?? 1000) - 1
     const res = await this.command.stackListFrames(low, high)
+
+    // update most recent frame Id mappings
+    res.stack.forEach(fi => this.frameIdMap.set(fi.level, fi))
+
     response.body = {
       stackFrames: res.stack.map(mi.mapStackFrame),
+    }
+  }
+
+  private nextVar = 1
+
+  async command_evaluate(response: DebugProtocol.EvaluateResponse, args: DebugProtocol.EvaluateArguments) {
+    const addr = (args.frameId ? this.frameIdMap.get(args.frameId)?.addr : undefined) ?? '*'
+
+    if (args.context === 'repl' && args.expression.startsWith('>')) {
+      // execute console command
+      try {
+        const res = await this.command.interpreterExec('console', args.expression.substring(1))
+        response.body = {
+          result: (res.$console ?? ''),
+          variablesReference: 0,
+        }
+      } catch (error) {
+        throw configureError(error, ErrorCode.ConsoleEvaluationError, ErrorDestination.None)
+      }
+    } else {
+      // evalaulte variable
+      const num = this.nextVar++
+      try {
+        const res = await this.command.varCreate(`v${num.toString()}`, addr, args.expression)
+        response.body = {
+          result: String(res.value),
+          variablesReference: res.numchild ? num : 0,
+        }
+      } catch (error) {
+        throw configureError(error, ErrorCode.EvaluationError, ErrorDestination.None)
+      }
+    }
+  }
+
+  command_scopes(response: DebugProtocol.ScopesResponse, args: DebugProtocol.ScopesArguments) {
+    response.body = {
+      scopes: [
+        new Scope('Local', 1, false),
+        new Scope('Global', 2, true),
+      ],
     }
   }
 
