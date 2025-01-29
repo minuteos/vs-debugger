@@ -40,6 +40,14 @@
         }
       }
     },
+    "breakpoints": [
+      {
+        "language": "c"
+      },
+      {
+        "language": "cpp"
+      }
+    ],
     "debuggers": [
       {
         "label": "minuteDebug",

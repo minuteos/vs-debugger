@@ -1,11 +1,11 @@
 import { LaunchConfiguration } from '@my/configuration'
-import { configureError, ErrorCode, ErrorDestination } from '@my/errors'
+import { configureError, ErrorCode, ErrorDestination, MiError } from '@my/errors'
 import { GdbInstance } from '@my/gdb/instance'
-import { FrameInfo, MiCommands, MiExecStatus } from '@my/gdb/mi.commands'
+import { BreakpointInfo, FrameInfo, MiCommands, MiExecStatus } from '@my/gdb/mi.commands'
 import { createGdbServer } from '@my/gdb/servers/factory'
 import { getLog, getTrace, traceEnabled } from '@my/services'
 import { findExecutable } from '@my/util'
-import { ContinuedEvent, DebugSession, Response, Scope, StoppedEvent } from '@vscode/debugadapter'
+import { ContinuedEvent, DebugSession, InitializedEvent, Response, Scope, StoppedEvent } from '@vscode/debugadapter'
 import { DebugProtocol } from '@vscode/debugprotocol'
 
 import * as mi from './mi.mappings'
@@ -50,6 +50,8 @@ export class MinuteDebugSession extends DebugSession {
 
     await gdb.command.gdbSet('mi-async', 1)
     await gdb.command.targetSelect('extended-remote', server.address)
+
+    this.sendEvent(new InitializedEvent())
   }
 
   async command_disconnect(response: DebugProtocol.DisconnectResponse, args: DebugProtocol.DisconnectArguments) {
@@ -146,6 +148,64 @@ export class MinuteDebugSession extends DebugSession {
 
   async command_stepOut(response: DebugProtocol.StepOutResponse, args: DebugProtocol.StepOutArguments) {
     await this.command.execFinish()
+  }
+
+  private readonly breakpointMap = new Map<string, BreakpointInfo[]>()
+
+  async command_setBreakpoints(response: DebugProtocol.SetBreakpointsResponse, args: DebugProtocol.SetBreakpointsArguments) {
+    const resBreakpoints = []
+    const { breakpoints = [], source: { path = '<unknown>' } } = args
+
+    // start by removing old breakpoints to make space
+    const remove: BreakpointInfo[] = []
+    const preserve: BreakpointInfo[] = []
+    for (const bkpt of this.breakpointMap.get(path) ?? []) {
+      if (breakpoints.find(b => b.line === bkpt.line)) {
+        preserve.push(bkpt)
+      } else {
+        remove.push(bkpt)
+      }
+    }
+
+    if (remove.length) {
+      await this.command.breakDelete(...remove.map(b => b.number))
+    }
+    // set the new breakpoints either way, the array will be mutated as we create new ones
+    this.breakpointMap.set(path, preserve)
+
+    for (const bkpt of breakpoints) {
+      const existing = preserve.find(b => b.line === bkpt.line)
+      if (existing) {
+        resBreakpoints.push({
+          verified: true,
+          id: existing.number,
+        })
+        continue
+      }
+
+      try {
+        const res = await this.command.breakInsert(undefined, {
+          source: args.source.path,
+          line: bkpt.line,
+        })
+        preserve.push(res.bkpt)
+        resBreakpoints.push({
+          verified: true,
+          id: res.bkpt.number,
+          line: res.bkpt.line,
+          message: res.bkpt.func,
+        })
+      } catch (err) {
+        resBreakpoints.push({
+          verified: false,
+          message: err instanceof MiError ? err.result.msg : String(err),
+        })
+      }
+    }
+
+    response.body = {
+      breakpoints: resBreakpoints,
+    }
   }
 
   /* eslint-enable @typescript-eslint/no-unused-vars */

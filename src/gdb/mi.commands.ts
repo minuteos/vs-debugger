@@ -62,6 +62,24 @@ interface ExecThreadGroupOptions {
   threadGroup?: number
 }
 
+interface BreakpointOptions {
+  source?: string
+  function?: string
+  label?: string
+  line?: number
+  t?: boolean /** temporary */
+  h?: boolean /** hardware */
+  f?: boolean /** force creation if locspec cannot be parsed */
+  d?: boolean /** create disabled */
+  a?: boolean /** create tracepoint */
+  c?: string /** conditional */
+  forceCondition?: boolean
+  i?: number /** ignore count */
+  p?: number /** thread ID */
+  g?: string /** thread group ID */
+  qualified?: boolean /** function name is fully qualified */
+}
+
 export interface MiCommands {
   targetSelect(type: 'extended-remote', address: string): Promise<MiCommandResult>
   gdbSet(option: 'mi-async', value: unknown): Promise<MiCommandResult>
@@ -75,6 +93,7 @@ export interface MiCommands {
   breakDisable(...breakpoins: number[]): Promise<MiCommandResult>
   breakEnable(...breakpoins: number[]): Promise<MiCommandResult>
   breakInfo(breakpoint: number): Promise<BreakpointInfoCommandResult>
+  breakInsert(locspec?: string, opts?: BreakpointOptions): Promise<BreakpointInsertCommandResult>
 
   // thread commands
   threadInfo(threadId?: number): Promise<ThreadInfoCommandResult>
@@ -101,7 +120,7 @@ export interface MiCommands {
 }
 
 export interface BreakpointInfo {
-  bkpt: number
+  number: number
   type: 'breakpoint'
   disp: 'keep'
   enabled: 'y'
@@ -128,6 +147,10 @@ export interface BreakpointTable {
 export interface BreakpointInfoCommandResult extends MiCommandResult {
   breakpointTable: BreakpointTable
   body: BreakpointInfo[]
+}
+
+export interface BreakpointInsertCommandResult extends MiCommandResult {
+  bkpt: BreakpointInfo
 }
 
 export interface FrameInfo {
