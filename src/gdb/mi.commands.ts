@@ -39,7 +39,19 @@ export type MiExecStatus = RunningExecStatus | StoppedExecStatus
 export interface MiCommandResult extends MiResult {
   $notify?: MiNotify[]
   $output?: string
+  $console?: string
 }
+
+export interface MiCommandErrorResult extends MiCommandResult {
+  $class: 'error'
+  msg: string
+}
+
+export interface MiCommandNonErrorResult extends MiCommandResult {
+  $class: 'done'
+}
+
+export type MiCommandMaybeErrorResult = MiCommandNonErrorResult | MiCommandErrorResult
 
 export interface MiCommands {
   targetSelect(type: 'extended-remote', address: string): Promise<MiCommandResult>

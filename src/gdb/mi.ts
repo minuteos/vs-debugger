@@ -1,10 +1,11 @@
+import { MiError } from '@my/errors'
 import { getLog, getTrace } from '@my/services'
 import { camelToKebab, kebabToCamel, promiseWithResolvers, PromiseWithResolvers, readLines, Signal } from '@my/util'
 import { Sema } from 'async-sema'
 import { Readable, Writable } from 'stream'
 import { promisify } from 'util'
 
-import { MiCommandResult, MiCommands, MiExecStatus, MiNotify, MiStatus } from './mi.commands'
+import { MiCommandMaybeErrorResult, MiCommandResult, MiCommands, MiExecStatus, MiNotify, MiResult, MiStatus } from './mi.commands'
 import { MiStreamType } from './mi.events'
 
 const log = getLog('MI')
@@ -20,6 +21,7 @@ interface PendingCommand extends PromiseWithResolvers<MiCommandResult> {
   onStatus?: (status: MiStatus) => void
   notify?: MiNotify[]
   output?: string
+  console?: string
 }
 
 export class GdbMi extends AsyncDisposableStack {
@@ -253,6 +255,9 @@ export class GdbMi extends AsyncDisposableStack {
         if (type === '@' && cmd) {
           cmd.output = (cmd.output ?? '') + text
         }
+        if (type === '~' && cmd) {
+          cmd.console = (cmd.console ?? '') + text
+        }
         this.callbacks?.stream?.(type as MiStreamType, text)
         return
       }
@@ -262,7 +267,7 @@ export class GdbMi extends AsyncDisposableStack {
       case '+':
       case '=':
       {
-        const res: MiCommandResult = {
+        const res: MiResult = {
           $class: parseClass(),
         }
         while (line.startsWith(',')) {
@@ -282,10 +287,16 @@ export class GdbMi extends AsyncDisposableStack {
             if (!cmd) {
               log.error('Result without pending command')
             } else {
-              res.$notify = cmd.notify
-              res.$output = cmd.output
+              const cmdRes = res as MiCommandMaybeErrorResult
+              cmdRes.$notify = cmd.notify
+              cmdRes.$output = cmd.output
+              cmdRes.$console = cmd.console
               traceCmd('<', cmd.token, cmd.command, res)
-              cmd.resolve(res)
+              if (cmdRes.$class === 'error') {
+                cmd.reject(new MiError(cmdRes))
+              } else {
+                cmd.resolve(cmdRes)
+              }
             }
             break
 
@@ -318,8 +329,11 @@ export class GdbMi extends AsyncDisposableStack {
   }
 
   private async execute(command: string, ...args: string[]): Promise<MiCommandResult> {
+    function quoteArg(arg: string) {
+      return /\s/.exec(arg) ? JSON.stringify(arg) : arg
+    }
+
     const token = this.nextToken++
-    traceCmd('>', token, command, args)
     const p = promiseWithResolvers<MiCommandResult>()
     await this.commandSema.acquire()
     this.pendingCommand = {
@@ -327,8 +341,9 @@ export class GdbMi extends AsyncDisposableStack {
       command,
       token,
     }
+    traceCmd('>', token, command, args)
     try {
-      await this.send(`${token.toString()}-${camelToKebab(command)} ${args.join(' ')}`)
+      await this.send(`${token.toString()}-${camelToKebab(command)} ${args.map(quoteArg).join(' ')}`)
       return await p.promise
     } finally {
       this.pendingCommand = undefined
