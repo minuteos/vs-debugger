@@ -328,9 +328,43 @@ export class GdbMi extends AsyncDisposableStack {
     await this._send(line + '\n')
   }
 
-  private async execute(command: string, ...args: string[]): Promise<MiCommandResult> {
-    function quoteArg(arg: string) {
-      return /\s/.exec(arg) ? JSON.stringify(arg) : arg
+  private async execute(command: string, ...args: unknown[]): Promise<MiCommandResult> {
+    function formatArg(arg: unknown): string[] {
+      if (arg === null || arg === undefined) {
+        return []
+      }
+
+      if (typeof arg === 'object') {
+        // generate options
+        const argSet: string[] = []
+        for (const [k, v] of Object.entries(arg)) {
+          if (v === undefined || v === false) {
+            // skip undefined/false option args
+            continue
+          }
+
+          if (k.length === 1) {
+            argSet.push(`-${k}`)
+          } else {
+            argSet.push(`--${k}`)
+          }
+
+          if (v !== true) {
+            argSet.push(...formatArg(v))
+          }
+        }
+
+        return argSet
+      }
+
+      // eslint-disable-next-line @typescript-eslint/no-base-to-string
+      let str = arg.toString()
+
+      if (/[\s'"]/.exec(str)) {
+        str = `"${str.replaceAll('"', '\\"')}"`
+      }
+
+      return [str]
     }
 
     const token = this.nextToken++
@@ -343,7 +377,7 @@ export class GdbMi extends AsyncDisposableStack {
     }
     traceCmd('>', token, command, args)
     try {
-      await this.send(`${token.toString()}-${camelToKebab(command)} ${args.map(quoteArg).join(' ')}`)
+      await this.send(`${token.toString()}-${camelToKebab(command)} ${args.flatMap(formatArg).join(' ')}`)
       return await p.promise
     } finally {
       this.pendingCommand = undefined
