@@ -32,6 +32,7 @@ export class MinuteDebugSession extends DebugSession {
 
   command_initialize(response: DebugProtocol.InitializeResponse, args: DebugProtocol.InitializeRequestArguments) {
     response.body = {
+      supportsSteppingGranularity: true,
     }
   }
 
@@ -47,6 +48,7 @@ export class MinuteDebugSession extends DebugSession {
     ])
     this.gdb = gdb
 
+    await gdb.command.gdbSet('mi-async', 1)
     await gdb.command.targetSelect('extended-remote', server.address)
   }
 
@@ -116,6 +118,34 @@ export class MinuteDebugSession extends DebugSession {
         new Scope('Global', 2, true),
       ],
     }
+  }
+
+  async command_pause(response: DebugProtocol.PauseResponse, args: DebugProtocol.PauseArguments) {
+    await this.command.execInterrupt()
+  }
+
+  async command_continue(response: DebugProtocol.ContinueResponse, args: DebugProtocol.ContinueArguments) {
+    await this.command.execContinue()
+  }
+
+  async command_next(response: DebugProtocol.NextResponse, args: DebugProtocol.NextArguments) {
+    if (args.granularity === 'instruction') {
+      await this.command.execNextInstruction()
+    } else {
+      await this.command.execNext()
+    }
+  }
+
+  async command_stepIn(response: DebugProtocol.StepInResponse, args: DebugProtocol.StepInArguments) {
+    if (args.granularity === 'instruction') {
+      await this.command.execStepInstruction()
+    } else {
+      await this.command.execStep()
+    }
+  }
+
+  async command_stepOut(response: DebugProtocol.StepOutResponse, args: DebugProtocol.StepOutArguments) {
+    await this.command.execFinish()
   }
 
   /* eslint-enable @typescript-eslint/no-unused-vars */

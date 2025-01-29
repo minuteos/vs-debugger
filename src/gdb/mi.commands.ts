@@ -53,8 +53,18 @@ export interface MiCommandNonErrorResult extends MiCommandResult {
 
 export type MiCommandMaybeErrorResult = MiCommandNonErrorResult | MiCommandErrorResult
 
+interface ExecReverseOptions {
+  reverse?: boolean
+}
+
+interface ExecThreadGroupOptions {
+  all?: boolean
+  threadGroup?: number
+}
+
 export interface MiCommands {
   targetSelect(type: 'extended-remote', address: string): Promise<MiCommandResult>
+  gdbSet(option: 'mi-async', value: unknown): Promise<MiCommandResult>
   interpreterExec(interpreter: 'console', ...command: string[]): Promise<MiCommandResult>
 
   // breakpoint commands
@@ -75,6 +85,19 @@ export interface MiCommands {
 
   // variable commands
   varCreate(name: string, frameAddr: string, expression: string): Promise<VariableCreateCommandResult>
+
+  // exec commands
+  execContinue(opts?: ExecReverseOptions & ExecThreadGroupOptions): Promise<MiCommandResult>
+  execFinish(opts?: ExecReverseOptions): Promise<MiCommandResult>
+  execInterrupt(opts?: ExecReverseOptions & ExecThreadGroupOptions): Promise<MiCommandResult>
+  execJump(location: string): Promise<MiCommandResult>
+  execNext(opts?: ExecReverseOptions): Promise<MiCommandResult>
+  execNextInstruction(opts?: ExecReverseOptions): Promise<MiCommandResult>
+  execReturn(): Promise<MiCommandResult>
+  execRun(opts?: ExecThreadGroupOptions & { start?: boolean }): Promise<MiCommandResult>
+  execStep(opts?: ExecReverseOptions): Promise<MiCommandResult>
+  execStepInstruction(opts?: ExecReverseOptions): Promise<MiCommandResult>
+  execUntil(location: string): Promise<MiCommandResult>
 }
 
 export interface BreakpointInfo {
