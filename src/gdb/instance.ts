@@ -55,6 +55,10 @@ export class GdbInstance extends AsyncDisposableStack {
     return this._mi
   }
 
+  get running(): boolean {
+    return !!this.gdb && typeof this.gdb.exitCode !== 'number'
+  }
+
   get command(): MiCommands {
     return this._mi.command
   }

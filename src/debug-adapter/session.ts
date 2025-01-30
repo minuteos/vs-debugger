@@ -4,6 +4,7 @@ import { configureError, ErrorCode, ErrorDestination, MiError } from '@my/errors
 import { GdbInstance } from '@my/gdb/instance'
 import { BreakpointInfo, FrameInfo, MiCommands, MiExecStatus } from '@my/gdb/mi.commands'
 import { createGdbServer } from '@my/gdb/servers/factory'
+import { GdbServer } from '@my/gdb/servers/gdb-server'
 import { getLog, getTrace, traceEnabled } from '@my/services'
 import { findExecutable } from '@my/util'
 import { ContinuedEvent, DebugSession, InitializedEvent, Response, Scope, StoppedEvent } from '@vscode/debugadapter'
@@ -20,14 +21,36 @@ const trace = getTrace('DAP')
 
 export class MinuteDebugSession extends DebugSession {
   private gdb?: GdbInstance
+  private server?: GdbServer
   private disassemblyCache?: DisassemblyCache
 
   get command(): MiCommands {
     const gdb = this.gdb
     if (!gdb) {
+      throw new Error('GDB not started')
+    }
+    if (!gdb.running) {
       throw new Error('GDB lost')
     }
     return gdb.command
+  }
+
+  async dispose() {
+    await this.cleanup()
+    super.dispose()
+  }
+
+  private async cleanup() {
+    try {
+      await this.server?.disposeAsync()
+    } catch (err) {
+      log.error('Failed to dispose GDB server', err)
+    }
+    try {
+      await this.gdb?.disposeAsync()
+    } catch (err) {
+      log.error('Failed to dispose GDB', err)
+    }
   }
 
   // #region Command handlers
@@ -42,26 +65,23 @@ export class MinuteDebugSession extends DebugSession {
 
   async command_launch(response: DebugProtocol.LaunchResponse, args: DebugProtocol.LaunchRequestArguments) {
     const config = args as LaunchConfiguration
-    const gdb = new GdbInstance(config.program, (exec) => {
+    this.gdb = new GdbInstance(config.program, (exec) => {
       this.execStatusChange(exec)
     })
-    const server = createGdbServer(config)
+    this.server = createGdbServer(config)
     await Promise.all([
-      gdb.start(await findExecutable('arm-none-eabi-gdb')),
-      server.start(),
+      this.gdb.start(await findExecutable('arm-none-eabi-gdb')),
+      this.server.start(),
     ])
-    this.gdb = gdb
 
-    await gdb.command.gdbSet('mi-async', 1)
-    await gdb.command.targetSelect('extended-remote', server.address)
+    await this.command.gdbSet('mi-async', 1)
+    await this.command.targetSelect('extended-remote', this.server.address)
 
     this.sendEvent(new InitializedEvent())
   }
 
   async command_disconnect(response: DebugProtocol.DisconnectResponse, args: DebugProtocol.DisconnectArguments) {
-    const gdb = this.gdb
-    this.gdb = undefined
-    await gdb?.disposeAsync()
+    await this.cleanup()
   }
 
   async command_threads(response: DebugProtocol.ThreadsResponse) {

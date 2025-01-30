@@ -35,6 +35,7 @@ export abstract class ExecutableGdbServer extends GdbServer {
     log.info('Started', executable)
     this.defer(() => {
       log.info('Tearing down GDB server')
+      server.process.kill('SIGTERM')
     })
   }
 }
