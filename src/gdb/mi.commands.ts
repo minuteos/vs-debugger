@@ -80,6 +80,27 @@ interface BreakpointOptions {
   qualified?: boolean /** function name is fully qualified */
 }
 
+interface DisassemblyRangeTarget {
+  s: number /** start */
+  e: number /** end */
+}
+
+interface DisassemblyAddressTarget {
+  a: number /** address */
+}
+
+interface DisassemblyFunctionTarget {
+  f: string /** filename */
+  l: number /** line */
+  n?: number /** count */
+}
+type DisassemblyTarget = DisassemblyRangeTarget | DisassemblyAddressTarget | DisassemblyFunctionTarget
+
+type DisassemblyOptions = DisassemblyTarget & {
+  opcodes: 'none' | 'bytes' | 'display'
+  source: boolean
+}
+
 export interface MiCommands {
   targetSelect(type: 'extended-remote', address: string): Promise<MiCommandResult>
   gdbSet(option: 'mi-async', value: unknown): Promise<MiCommandResult>
@@ -117,6 +138,9 @@ export interface MiCommands {
   execStep(opts?: ExecReverseOptions): Promise<MiCommandResult>
   execStepInstruction(opts?: ExecReverseOptions): Promise<MiCommandResult>
   execUntil(location: string): Promise<MiCommandResult>
+
+  // data commands
+  dataDisassemble(opts: DisassemblyOptions): Promise<DisassemblyResult>
 }
 
 export interface BreakpointInfo {
@@ -197,4 +221,24 @@ export interface VariableCreateCommandResult extends MiCommandResult {
   hasMore?: number
   dynamic?: number
   displayhint?: string
+}
+
+export interface DisassemblyInstruction {
+  address: string
+  funcName: string
+  offset: number
+  opcodes: string
+  inst: string
+}
+
+export interface DisassemblySourceInstruction {
+  $type: 'src_and_asm_line'
+  line: number
+  file: string
+  fullname: string
+  line_asm_insn?: DisassemblyInstruction[]
+}
+
+export interface DisassemblyResult extends MiCommandResult {
+  asm_insns: DisassemblySourceInstruction[] | DisassemblyInstruction[]
 }

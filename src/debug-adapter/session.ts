@@ -1,4 +1,5 @@
 import { LaunchConfiguration } from '@my/configuration'
+import { DisassemblyCache } from '@my/debug-adapter/disassembly'
 import { configureError, ErrorCode, ErrorDestination, MiError } from '@my/errors'
 import { GdbInstance } from '@my/gdb/instance'
 import { BreakpointInfo, FrameInfo, MiCommands, MiExecStatus } from '@my/gdb/mi.commands'
@@ -9,6 +10,7 @@ import { ContinuedEvent, DebugSession, InitializedEvent, Response, Scope, Stoppe
 import { DebugProtocol } from '@vscode/debugprotocol'
 
 import * as mi from './mi.mappings'
+import { mapInstruction } from './mi.mappings'
 
 type DebugHandler = (response: DebugProtocol.Response, args: unknown, request: DebugProtocol.Request) => Promise<string | boolean>
 type DebugHandlers = Record<string, DebugHandler>
@@ -18,6 +20,7 @@ const trace = getTrace('DAP')
 
 export class MinuteDebugSession extends DebugSession {
   private gdb?: GdbInstance
+  private disassemblyCache?: DisassemblyCache
 
   get command(): MiCommands {
     const gdb = this.gdb
@@ -33,6 +36,7 @@ export class MinuteDebugSession extends DebugSession {
   command_initialize(response: DebugProtocol.InitializeResponse, args: DebugProtocol.InitializeRequestArguments) {
     response.body = {
       supportsSteppingGranularity: true,
+      supportsDisassembleRequest: true,
     }
   }
 
@@ -216,6 +220,15 @@ export class MinuteDebugSession extends DebugSession {
 
     response.body = {
       breakpoints: resBreakpoints,
+    }
+  }
+
+  async command_disassemble(response: DebugProtocol.DisassembleResponse, args: DebugProtocol.DisassembleArguments) {
+    const base = parseInt(args.memoryReference) + (args.offset ?? 0)
+    const cache = this.disassemblyCache ??= new DisassemblyCache(this.command)
+    const res = await cache.fill(base, args.instructionOffset ?? 0, args.instructionCount)
+    response.body = {
+      instructions: res.map(mapInstruction),
     }
   }
 

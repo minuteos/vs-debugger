@@ -5,6 +5,7 @@ export enum ErrorCode {
   EvaluationError = 110,
   ConsoleEvaluationError = 111,
 
+  Internal = 900,
   Unknown = 999,
 }
 
