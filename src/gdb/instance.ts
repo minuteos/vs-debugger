@@ -9,7 +9,7 @@ const rawLog = getRawLog('GDB')
 
 export class GdbInstance extends AsyncDisposableStack {
   private gdb?: ChildProcess
-  private mi!: GdbMi
+  private _mi!: GdbMi
 
   constructor(readonly program: string, readonly onExec: (evt: MiExecStatus) => void) {
     super()
@@ -38,7 +38,7 @@ export class GdbInstance extends AsyncDisposableStack {
       },
       exec: this.onExec,
     }))
-    this.mi = mi
+    this._mi = mi
 
     this.defer(() => {
       log.info('Tearing down GDB')
@@ -51,7 +51,11 @@ export class GdbInstance extends AsyncDisposableStack {
     log.info('Started', executable)
   }
 
+  get mi(): GdbMi {
+    return this._mi
+  }
+
   get command(): MiCommands {
-    return this.mi.command
+    return this._mi.command
   }
 }

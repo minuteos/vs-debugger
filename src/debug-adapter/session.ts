@@ -98,6 +98,17 @@ export class MinuteDebugSession extends DebugSession {
       } catch (error) {
         throw configureError(error, ErrorCode.ConsoleEvaluationError, ErrorDestination.None)
       }
+    } else if (args.context === 'repl' && (/^-[a-z]/.exec(args.expression)) && this.gdb) {
+      // execute raw MI command
+      try {
+        const res = await this.gdb.mi.execute(args.expression.substring(1))
+        response.body = {
+          result: JSON.stringify(res),
+          variablesReference: 0,
+        }
+      } catch (error) {
+        throw configureError(error, ErrorCode.ConsoleEvaluationError, ErrorDestination.None)
+      }
     } else {
       // evalaulte variable
       const num = this.nextVar++

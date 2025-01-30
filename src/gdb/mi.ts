@@ -65,7 +65,7 @@ export class GdbMi extends AsyncDisposableStack {
   private async receiver(): Promise<void> {
     log.info('Starting receiver')
     try {
-      for await (const lineBuf of readLines(this.input)) {
+      for await (const lineBuf of readLines(this.input, { maximumLineLength: 1024 * 1024 })) {
         this.process(String(lineBuf))
       }
 
@@ -328,7 +328,7 @@ export class GdbMi extends AsyncDisposableStack {
     await this._send(line + '\n')
   }
 
-  private async execute(command: string, ...args: unknown[]): Promise<MiCommandResult> {
+  async execute(command: string, ...args: unknown[]): Promise<MiCommandResult> {
     function formatArg(arg: unknown): string[] {
       if (arg === null || arg === undefined) {
         return []
