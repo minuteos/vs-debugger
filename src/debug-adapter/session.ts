@@ -2,7 +2,7 @@ import { LaunchConfiguration } from '@my/configuration'
 import { DisassemblyCache } from '@my/debug-adapter/disassembly'
 import { configureError, DebugError, ErrorCode, ErrorDestination, MiError } from '@my/errors'
 import { GdbInstance } from '@my/gdb/instance'
-import { BreakpointInfo, FrameInfo, MiCommands, MiExecStatus } from '@my/gdb/mi.commands'
+import { BreakpointInfo, BreakpointInsertCommandResult, FrameInfo, MiCommands, MiExecStatus } from '@my/gdb/mi.commands'
 import { createGdbServer } from '@my/gdb/servers/factory'
 import { GdbServer } from '@my/gdb/servers/gdb-server'
 import { getLog, getTrace, traceEnabled } from '@my/services'
@@ -60,6 +60,7 @@ export class MinuteDebugSession extends DebugSession {
     response.body = {
       supportsSteppingGranularity: true,
       supportsDisassembleRequest: true,
+      supportsInstructionBreakpoints: true,
     }
   }
 
@@ -186,16 +187,64 @@ export class MinuteDebugSession extends DebugSession {
   }
 
   private readonly breakpointMap = new Map<string, BreakpointInfo[]>()
+  private readonly instructionBreakpoints: BreakpointInfo[] = []
 
   async command_setBreakpoints(response: DebugProtocol.SetBreakpointsResponse, args: DebugProtocol.SetBreakpointsArguments) {
-    const resBreakpoints = []
-    const { breakpoints = [], source: { path = '<unknown>' } } = args
+    response.body = {
+      breakpoints: [],
+    }
 
+    const { breakpoints = [], source: { path = '<unknown>' } } = args
+    const current = this.breakpointMap.get(path) ?? []
+    this.breakpointMap.set(path, current)
+
+    await this.setBreakpoints(
+      response.body.breakpoints,
+      breakpoints,
+      current,
+      (s, b) => s.line === b.line,
+      s => this.command.breakInsert(undefined, { source: path, line: s.line }),
+    )
+  }
+
+  async command_setInstructionBreakpoints(response: DebugProtocol.SetInstructionBreakpointsResponse, args: DebugProtocol.SetInstructionBreakpointsArguments) {
+    response.body = {
+      breakpoints: [],
+    }
+
+    const { breakpoints = [] } = args
+
+    function getLocation(s: DebugProtocol.InstructionBreakpoint) {
+      if (!s.offset) {
+        return `*${s.instructionReference}`
+      } else if (s.offset > 0) {
+        return `*(${s.instructionReference}+${s.offset.toString()})`
+      } else {
+        return `*(${s.instructionReference}${s.offset.toString()})`
+      }
+    }
+
+    await this.setBreakpoints(
+      response.body.breakpoints,
+      breakpoints,
+      this.instructionBreakpoints,
+      (s, b) => getLocation(s) === b.originalLocation,
+      s => this.command.breakInsert(getLocation(s)),
+    )
+  }
+
+  private async setBreakpoints<TSourceBreakpoint>(
+    resBreakpoints: DebugProtocol.Breakpoint[],
+    wantedBreakpoints: TSourceBreakpoint[],
+    currentBreakpoints: BreakpointInfo[],
+    comparer: (source: TSourceBreakpoint, current: BreakpointInfo) => boolean,
+    create: (source: TSourceBreakpoint) => Promise<BreakpointInsertCommandResult>,
+  ) {
     // start by removing old breakpoints to make space
     const remove: BreakpointInfo[] = []
     const preserve: BreakpointInfo[] = []
-    for (const bkpt of this.breakpointMap.get(path) ?? []) {
-      if (breakpoints.find(b => b.line === bkpt.line)) {
+    for (const bkpt of currentBreakpoints) {
+      if (wantedBreakpoints.find(b => comparer(b, bkpt))) {
         preserve.push(bkpt)
       } else {
         remove.push(bkpt)
@@ -204,12 +253,13 @@ export class MinuteDebugSession extends DebugSession {
 
     if (remove.length) {
       await this.command.breakDelete(...remove.map(b => b.number))
+      // set the current breakpoints to what's left
+      currentBreakpoints.splice(0, currentBreakpoints.length, ...preserve)
     }
-    // set the new breakpoints either way, the array will be mutated as we create new ones
-    this.breakpointMap.set(path, preserve)
 
-    for (const bkpt of breakpoints) {
-      const existing = preserve.find(b => b.line === bkpt.line)
+    // add new breakpoints or match existing ones
+    for (const bkpt of wantedBreakpoints) {
+      const existing = currentBreakpoints.find(b => comparer(bkpt, b))
       if (existing) {
         resBreakpoints.push({
           verified: true,
@@ -219,11 +269,8 @@ export class MinuteDebugSession extends DebugSession {
       }
 
       try {
-        const res = await this.command.breakInsert(undefined, {
-          source: args.source.path,
-          line: bkpt.line,
-        })
-        preserve.push(res.bkpt)
+        const res = await create(bkpt)
+        currentBreakpoints.push(res.bkpt)
         resBreakpoints.push({
           verified: true,
           id: res.bkpt.number,
@@ -236,10 +283,6 @@ export class MinuteDebugSession extends DebugSession {
           message: err instanceof MiError ? err.result.msg : String(err),
         })
       }
-    }
-
-    response.body = {
-      breakpoints: resBreakpoints,
     }
   }
 

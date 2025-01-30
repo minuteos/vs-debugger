@@ -155,6 +155,7 @@ export interface BreakpointInfo {
   line: number
   threadGroups: string[]
   times: number
+  originalLocation: string
 }
 
 export interface BreakpointTable {
