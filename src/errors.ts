@@ -4,6 +4,7 @@ export enum ErrorCode {
   LaunchError = 100,
   EvaluationError = 110,
   ConsoleEvaluationError = 111,
+  DisassemblyBadRequest = 120,
 
   Internal = 900,
   Unknown = 999,

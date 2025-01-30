@@ -1,6 +1,6 @@
 import { LaunchConfiguration } from '@my/configuration'
 import { DisassemblyCache } from '@my/debug-adapter/disassembly'
-import { configureError, ErrorCode, ErrorDestination, MiError } from '@my/errors'
+import { configureError, DebugError, ErrorCode, ErrorDestination, MiError } from '@my/errors'
 import { GdbInstance } from '@my/gdb/instance'
 import { BreakpointInfo, FrameInfo, MiCommands, MiExecStatus } from '@my/gdb/mi.commands'
 import { createGdbServer } from '@my/gdb/servers/factory'
@@ -245,6 +245,10 @@ export class MinuteDebugSession extends DebugSession {
 
   async command_disassemble(response: DebugProtocol.DisassembleResponse, args: DebugProtocol.DisassembleArguments) {
     const base = parseInt(args.memoryReference) + (args.offset ?? 0)
+    if (Number.isNaN(base)) {
+      throw new DebugError('Invalid disassembly address: {base}', { base }, undefined, ErrorCode.DisassemblyBadRequest)
+    }
+
     const cache = this.disassemblyCache ??= new DisassemblyCache(this.command)
     const res = await cache.fill(base, args.instructionOffset ?? 0, args.instructionCount)
     response.body = {
