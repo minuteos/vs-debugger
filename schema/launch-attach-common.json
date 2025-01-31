@@ -1,0 +1,19 @@
+{
+  "$schema": "https://json-schema.org/draft-07/schema",
+  "required": [
+    "program",
+    "server"
+  ],
+  "properties": {
+    "program": {
+      "type": "string"
+    },
+    "server": {
+      "type": "string",
+      "enum": [
+        "qemu",
+        "bmp"
+      ]
+    }
+  }
+}

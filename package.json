@@ -1,4 +1,5 @@
 {
+  "$schema": "vscode://schemas/vscode-extensions",
   "name": "minute-debug",
   "publisher": "minuteos",
   "displayName": "minuteDebug",
@@ -54,40 +55,10 @@
         "type": "minute-debug",
         "configurationAttributes": {
           "launch": {
-            "required": [
-              "program",
-              "server"
-            ],
-            "properties": {
-              "program": {
-                "type": "string"
-              },
-              "server": {
-                "type": "string",
-                "enum": [
-                  "qemu",
-                  "bmp"
-                ]
-              }
-            }
+            "$$include": "schema/launch.json"
           },
           "attach": {
-            "required": [
-              "program",
-              "server"
-            ],
-            "properties": {
-              "program": {
-                "type": "string"
-              },
-              "server": {
-                "type": "string",
-                "enum": [
-                  "qemu",
-                  "bmp"
-                ]
-              }
-            }
+            "$$include": "schema/attach.json"
           }
         },
         "languages": [
