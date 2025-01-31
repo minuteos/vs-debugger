@@ -23,6 +23,7 @@ export class MinuteDebugSession extends DebugSession {
   private gdb?: GdbInstance
   private server?: GdbServer
   private disassemblyCache?: DisassemblyCache
+  private disposableStack = new AsyncDisposableStack()
 
   get command(): MiCommands {
     const gdb = this.gdb
@@ -41,16 +42,7 @@ export class MinuteDebugSession extends DebugSession {
   }
 
   private async cleanup() {
-    try {
-      await this.server?.disposeAsync()
-    } catch (err) {
-      log.error('Failed to dispose GDB server', err)
-    }
-    try {
-      await this.gdb?.disposeAsync()
-    } catch (err) {
-      log.error('Failed to dispose GDB', err)
-    }
+    await this.disposableStack.disposeAsync()
   }
 
   // #region Command handlers
@@ -66,10 +58,10 @@ export class MinuteDebugSession extends DebugSession {
 
   async command_launch(response: DebugProtocol.LaunchResponse, args: DebugProtocol.LaunchRequestArguments) {
     const config = args as LaunchConfiguration
-    this.gdb = new GdbInstance(config, (exec) => {
+    this.gdb = this.disposableStack.use(new GdbInstance(config, (exec) => {
       this.execStatusChange(exec)
-    })
-    this.server = createGdbServer(config)
+    }))
+    this.server = this.disposableStack.use(createGdbServer(config))
     await Promise.all([
       this.gdb.start(await findExecutable('arm-none-eabi-gdb')),
       this.server.start(),

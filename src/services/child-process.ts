@@ -25,7 +25,7 @@ export class ChildProcess extends AsyncDisposableStack {
     this.process = spawn(command, args, opts)
     this.defer(() => this.finalWait())
     this.pid = this.process.pid ?? -1
-    log.debug('Spawned', this.pid, command, args)
+    log.debug('Spawned', this.pid, command, args, 'with', opts)
     this.process.on('error', (err) => {
       log.error('Failed', this.pid)
       this.exitSignal.reject(err)
