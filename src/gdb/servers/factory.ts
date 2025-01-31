@@ -19,5 +19,5 @@ export function createGdbServer(launchConfig: LaunchConfiguration): GdbServer {
   }
 
   const type = typeMap[serverConfig.type]
-  return new type(serverConfig as never, launchConfig)
+  return new type({ launchConfig, serverConfig: serverConfig as never })
 }

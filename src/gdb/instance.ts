@@ -1,8 +1,9 @@
-import { MiStreamType } from '@my/gdb/mi.events'
+import { LaunchConfiguration } from '@my/configuration'
 import { ChildProcess, getLog, getRawLog } from '@my/services'
 
 import { GdbMi } from './mi'
 import { MiCommands, MiExecStatus } from './mi.commands'
+import { MiStreamType } from './mi.events'
 
 const log = getLog('GDB')
 const rawLog = getRawLog('GDB')
@@ -11,7 +12,7 @@ export class GdbInstance extends AsyncDisposableStack {
   private gdb?: ChildProcess
   private _mi!: GdbMi
 
-  constructor(readonly program: string, readonly onExec: (evt: MiExecStatus) => void) {
+  constructor(readonly config: LaunchConfiguration, readonly onExec: (evt: MiExecStatus) => void) {
     super()
   }
 
@@ -22,7 +23,7 @@ export class GdbInstance extends AsyncDisposableStack {
       log.info('Finished with exit code', this.gdb?.exitCode)
     })
 
-    const gdb = this.use(new ChildProcess(executable, ['--interpreter=mi2', this.program]))
+    const gdb = this.use(new ChildProcess(executable, ['--interpreter=mi2', this.config.program]))
     this.gdb = gdb
     gdb.forwardLines(gdb.stderr, (line) => {
       log.error(line)

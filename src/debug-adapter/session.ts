@@ -66,7 +66,7 @@ export class MinuteDebugSession extends DebugSession {
 
   async command_launch(response: DebugProtocol.LaunchResponse, args: DebugProtocol.LaunchRequestArguments) {
     const config = args as LaunchConfiguration
-    this.gdb = new GdbInstance(config.program, (exec) => {
+    this.gdb = new GdbInstance(config, (exec) => {
       this.execStatusChange(exec)
     })
     this.server = createGdbServer(config)

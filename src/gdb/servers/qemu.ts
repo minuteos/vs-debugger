@@ -1,16 +1,16 @@
-import { LaunchConfiguration, QemuServerConfiguration } from '@my/configuration'
+import { QemuServerConfiguration } from '@my/configuration'
 import { allocateTcpPort, findExecutable } from '@my/util'
 
-import { ExecutableGdbServer } from './gdb-server'
+import { ExecutableGdbServer, GdbServerOptions } from './gdb-server'
 
 const DEFAULT_MACHINE = 'netduinoplus2'
 
-export class QemuGdbServer extends ExecutableGdbServer {
-  address!: string
+interface QemuGdbServerOptions extends GdbServerOptions {
+  serverConfig: QemuServerConfiguration
+}
 
-  constructor(readonly config: QemuServerConfiguration, readonly launchConfig: LaunchConfiguration) {
-    super()
-  }
+export class QemuGdbServer extends ExecutableGdbServer<QemuGdbServerOptions> {
+  address!: string
 
   getExecutable(): Promise<string> {
     return findExecutable('qemu-system-arm')
@@ -19,14 +19,16 @@ export class QemuGdbServer extends ExecutableGdbServer {
   async getArguments(): Promise<string[]> {
     this.address = `127.0.0.1:${(await allocateTcpPort()).toString()}`
 
+    const { launchConfig, serverConfig } = this.options
+
     return [
       '-machine',
-      this.config.machine ?? DEFAULT_MACHINE,
-      ...(this.config.cpu ? ['-cpu', this.config.cpu] : []),
+      serverConfig.machine ?? DEFAULT_MACHINE,
+      ...(serverConfig.cpu ? ['-cpu', serverConfig.cpu] : []),
       '-semihosting',
       '-nographic',
       '-gdb', `tcp:${this.address}`,
-      '-kernel', this.launchConfig.program,
+      '-kernel', launchConfig.program,
       '-S', // stop at startup
     ]
   }

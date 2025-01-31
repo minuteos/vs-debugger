@@ -1,14 +1,23 @@
+import { LaunchConfiguration } from '@my/configuration'
 import { ChildProcess, getLog } from '@my/services'
 
 const log = getLog('GDBServer')
 
-export abstract class GdbServer extends AsyncDisposableStack {
+export interface GdbServerOptions {
+  launchConfig: LaunchConfiguration
+}
+
+export abstract class GdbServer<TOptions extends GdbServerOptions = GdbServerOptions> extends AsyncDisposableStack {
+  constructor(protected readonly options: TOptions) {
+    super()
+  }
+
   abstract start(): Promise<void>
 
   abstract get address(): string
 }
 
-export abstract class ExecutableGdbServer extends GdbServer {
+export abstract class ExecutableGdbServer<T extends GdbServerOptions> extends GdbServer<T> {
   private server?: ChildProcess
 
   abstract getExecutable(): Promise<string> | string
