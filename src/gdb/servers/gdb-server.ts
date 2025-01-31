@@ -12,7 +12,7 @@ export abstract class ExecutableGdbServer extends GdbServer {
   private server?: ChildProcess
 
   abstract getExecutable(): Promise<string> | string
-  abstract getArguments(): Promise<string[]> | string
+  abstract getArguments(): Promise<string[]> | string[]
 
   async start(): Promise<void> {
     const executable = await this.getExecutable()
@@ -23,7 +23,7 @@ export abstract class ExecutableGdbServer extends GdbServer {
         log.info('Finished with exit code', this.server.exitCode)
       }
     })
-    const server = this.use(new ChildProcess(executable, ...args))
+    const server = this.use(new ChildProcess(executable, args))
     this.server = server
     server.forwardLines(server.stdout, (line) => {
       log.info(line)

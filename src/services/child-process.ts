@@ -5,6 +5,11 @@ import { Readable } from 'stream'
 
 const log = getLog('ChildProcess')
 
+interface ChildProcessOptions {
+  cwd?: string
+  env?: Record<string, string>
+}
+
 /**
  * A class representing a child process, managing its lifetime
  */
@@ -14,10 +19,10 @@ export class ChildProcess extends AsyncDisposableStack {
   readonly pid: number
   private readonly exitSignal = new Signal<number>()
 
-  constructor(readonly command: string, ...args: string[]) {
+  constructor(readonly command: string, args: string[], opts?: ChildProcessOptions) {
     super()
     this.arguments = args
-    this.process = spawn(command, args)
+    this.process = spawn(command, args, opts)
     this.defer(() => this.finalWait())
     this.pid = this.process.pid ?? -1
     log.debug('Spawned', this.pid, command, args)

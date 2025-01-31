@@ -22,7 +22,7 @@ export class GdbInstance extends AsyncDisposableStack {
       log.info('Finished with exit code', this.gdb?.exitCode)
     })
 
-    const gdb = this.use(new ChildProcess(executable, '--interpreter=mi2', this.program))
+    const gdb = this.use(new ChildProcess(executable, ['--interpreter=mi2', this.program]))
     this.gdb = gdb
     gdb.forwardLines(gdb.stderr, (line) => {
       log.error(line)
