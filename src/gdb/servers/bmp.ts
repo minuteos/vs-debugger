@@ -2,9 +2,8 @@ import { BmpServerConfiguration } from '@my/configuration'
 import { DebugError, ErrorCode } from '@my/errors'
 import { MiCommands } from '@my/gdb/mi.commands'
 import { getLog } from '@my/services'
-import { getWildcardMatcher } from '@my/util'
-import { platform } from 'os'
-import { SerialPort } from 'serialport'
+import { findSerialPort } from '@my/services/serial'
+import { throwError } from '@my/util'
 
 import { GdbServer, GdbServerOptions } from './gdb-server'
 
@@ -23,29 +22,12 @@ export class BmpGdbServer extends GdbServer<BmpGdbServerOptions> {
   get address() { return this.port }
 
   async start(): Promise<void> {
-    this.port = this.options.serverConfig.port ?? await this.detectPort()
-  }
-
-  private async detectPort(): Promise<string> {
-    const config = this.options.serverConfig
-    let ports = await SerialPort.list()
-    // filter by VID/PID
-    ports = ports.filter(p => parseInt(p.vendorId ?? '', 16) === BMP_VID && parseInt(p.productId ?? '', 16) === BMP_PID)
-    if (platform() === 'darwin') {
-      ports.forEach(p => p.path = p.path.replace('/dev/tty.', '/dev/cu.'))
-    }
-    // filter by Serial Number, if specified
-    if (config.serial) {
-      const matcher = getWildcardMatcher(config.serial)
-      ports = ports.filter(p => p.serialNumber && matcher.exec(p.serialNumber))
-    }
-    // sort by pnpID/path to identify the GDB port (the second one is AUX)
-    ports.sort((a, b) => (a.pnpId ?? a.path).localeCompare(b.pnpId ?? b.path))
-    if (!ports.length) {
-      throw new Error('Failed to autodetect BMP port.\n\nAre you sure you have a BMP connected?')
-    }
-    log.info('Autodetected BMP port', ports[0].path)
-    return ports[0].path
+    this.port = this.options.serverConfig.port
+      ?? await findSerialPort({
+        deviceId: { vid: BMP_VID, pid: BMP_PID },
+        ...this.options.serverConfig,
+      })
+      ?? throwError(new Error('Failed to autodetect BMP port.\n\nAre you sure you have a BMP connected?'))
   }
 
   async launchOrAttach(mi: MiCommands, attach: boolean): Promise<void> {
