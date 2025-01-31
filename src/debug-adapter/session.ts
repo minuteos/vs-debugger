@@ -57,7 +57,14 @@ export class MinuteDebugSession extends DebugSession {
   }
 
   async command_launch(response: DebugProtocol.LaunchResponse, args: DebugProtocol.LaunchRequestArguments) {
-    const config = args as LaunchConfiguration
+    await this.launchOrAttach(args as LaunchConfiguration, false)
+  }
+
+  async command_attach(response: DebugProtocol.AttachResponse, args: DebugProtocol.AttachRequestArguments) {
+    await this.launchOrAttach(args as LaunchConfiguration, true)
+  }
+
+  private async launchOrAttach(config: LaunchConfiguration, attach: boolean) {
     this.gdb = this.disposableStack.use(new GdbInstance(config, (exec) => {
       this.execStatusChange(exec)
     }))
@@ -69,6 +76,8 @@ export class MinuteDebugSession extends DebugSession {
 
     await this.command.gdbSet('mi-async', 1)
     await this.command.targetSelect('extended-remote', this.server.address)
+
+    await this.server.launchOrAttach(this.command, attach)
 
     this.sendEvent(new InitializedEvent())
   }

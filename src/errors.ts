@@ -6,6 +6,8 @@ export enum ErrorCode {
   ConsoleEvaluationError = 111,
   DisassemblyBadRequest = 120,
 
+  BmpScanError = 200,
+
   Internal = 900,
   Unknown = 999,
 }

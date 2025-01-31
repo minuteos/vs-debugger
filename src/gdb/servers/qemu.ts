@@ -32,4 +32,8 @@ export class QemuGdbServer extends ExecutableGdbServer<QemuGdbServerOptions> {
       '-S', // stop at startup
     ]
   }
+
+  launchOrAttach(): Promise<void> {
+    return Promise.resolve()
+  }
 }

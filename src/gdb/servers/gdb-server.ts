@@ -1,4 +1,5 @@
 import { LaunchConfiguration } from '@my/configuration'
+import { MiCommands } from '@my/gdb/mi.commands'
 import { ChildProcess, getLog } from '@my/services'
 import { pick } from '@my/util'
 
@@ -14,6 +15,7 @@ export abstract class GdbServer<TOptions extends GdbServerOptions = GdbServerOpt
   }
 
   abstract start(): Promise<void>
+  abstract launchOrAttach(mi: MiCommands, attach: boolean): Promise<void>
 
   abstract get address(): string
 }

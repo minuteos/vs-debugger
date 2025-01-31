@@ -103,6 +103,7 @@ type DisassemblyOptions = DisassemblyTarget & {
 
 export interface MiCommands {
   targetSelect(type: 'extended-remote', address: string): Promise<MiCommandResult>
+  targetAttach(target: number | string): Promise<MiCommandResult>
   gdbSet(option: 'mi-async', value: unknown): Promise<MiCommandResult>
   interpreterExec(interpreter: 'console', ...command: string[]): Promise<MiCommandResult>
 

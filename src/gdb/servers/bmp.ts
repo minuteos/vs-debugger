@@ -1,4 +1,6 @@
 import { BmpServerConfiguration } from '@my/configuration'
+import { DebugError, ErrorCode } from '@my/errors'
+import { MiCommands } from '@my/gdb/mi.commands'
 import { getLog } from '@my/services'
 import { getWildcardMatcher } from '@my/util'
 import { platform } from 'os'
@@ -44,5 +46,22 @@ export class BmpGdbServer extends GdbServer<BmpGdbServerOptions> {
     }
     log.info('Autodetected BMP port', ports[0].path)
     return ports[0].path
+  }
+
+  async launchOrAttach(mi: MiCommands, attach: boolean): Promise<void> {
+    log.info('Scanning targets...')
+
+    const res = await mi.interpreterExec('console', 'monitor swdp_scan')
+    const [voltage, result, , ...targets] = (res.$output ?? '').split('\n')
+    if (result != 'Available Targets:') {
+      throw new DebugError('BMP swdp_scan failed:\n\n{result}', { result }, undefined, ErrorCode.BmpScanError)
+    }
+
+    log.info(voltage)
+    log.info('Detected targets', targets)
+
+    await mi.targetAttach(1)
+
+    void attach
   }
 }
