@@ -20,7 +20,10 @@ export enum ErrorDestination {
 
 export class DebugError extends Error {
   constructor(public format: string, readonly variables: Record<string, unknown> = {}, public destination = ErrorDestination.All, public code = ErrorCode.Unknown) {
-    super(format)
+    const message = format.replace(/{([^}]+)}/g, (match: string, name: string) =>
+      name in variables ? JSON.stringify(variables[name]) : match,
+    )
+    super(message)
     this.name = 'DebugError'
   }
 
