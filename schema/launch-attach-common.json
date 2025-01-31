@@ -5,6 +5,15 @@
     "server"
   ],
   "properties": {
+    "cwd": {
+      "type": "string"
+    },
+    "env": {
+      "type": "object",
+      "items": {
+        "type": "string"
+      }
+    },
     "program": {
       "type": "string"
     },

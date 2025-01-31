@@ -1,5 +1,6 @@
 import { LaunchConfiguration } from '@my/configuration'
 import { ChildProcess, getLog, getRawLog } from '@my/services'
+import { pick } from '@my/util'
 
 import { GdbMi } from './mi'
 import { MiCommands, MiExecStatus } from './mi.commands'
@@ -23,7 +24,10 @@ export class GdbInstance extends AsyncDisposableStack {
       log.info('Finished with exit code', this.gdb?.exitCode)
     })
 
-    const gdb = this.use(new ChildProcess(executable, ['--interpreter=mi2', this.config.program]))
+    const gdb = this.use(
+      new ChildProcess(executable, ['--interpreter=mi2', this.config.program],
+        pick(this.config, 'cwd', 'env')),
+    )
     this.gdb = gdb
     gdb.forwardLines(gdb.stderr, (line) => {
       log.error(line)

@@ -1,5 +1,6 @@
 import { LaunchConfiguration } from '@my/configuration'
 import { ChildProcess, getLog } from '@my/services'
+import { pick } from '@my/util'
 
 const log = getLog('GDBServer')
 
@@ -32,7 +33,10 @@ export abstract class ExecutableGdbServer<T extends GdbServerOptions> extends Gd
         log.info('Finished with exit code', this.server.exitCode)
       }
     })
-    const server = this.use(new ChildProcess(executable, args))
+    const server = this.use(
+      new ChildProcess(executable, args,
+        pick(this.options.launchConfig, 'cwd', 'env')),
+    )
     this.server = server
     server.forwardLines(server.stdout, (line) => {
       log.info(line)

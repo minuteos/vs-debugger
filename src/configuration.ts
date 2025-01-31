@@ -19,5 +19,7 @@ export type ServerConfiguration = QemuServerConfiguration | BmpServerConfigurati
 
 export interface LaunchConfiguration {
   server: ServerType | ServerConfiguration
+  cwd?: string
+  env?: Record<string, string>
   program: string
 }
