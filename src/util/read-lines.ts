@@ -1,5 +1,6 @@
 import { Readable } from 'stream'
 
+const CR = 13
 const LF = 10
 
 /**
@@ -15,6 +16,11 @@ interface ReadLinesOptions {
    * Byte used as line separator, default LF ('\n')
    */
   eolByte?: number
+
+  /**
+   * Byte to trim if present as the last character, default CR ('\r')
+   */
+  trimEnd?: number
 }
 
 /**
@@ -23,6 +29,7 @@ interface ReadLinesOptions {
 export class LineReader {
   private readonly maxLine: number
   private readonly eol: number
+  private readonly trim: number
 
   private readonly previousBlocks: Buffer[] = []
   private lineLength = 0 // total length of line, -1 when discarding
@@ -30,11 +37,12 @@ export class LineReader {
   constructor(opts: ReadLinesOptions = {}) {
     this.maxLine = opts.maximumLineLength ?? 65536
     this.eol = opts.eolByte ?? LF
+    this.trim = opts.trimEnd ?? CR
   }
 
   process(block?: Buffer): Buffer[] {
     let { lineLength } = this
-    const { maxLine, eol, previousBlocks } = this
+    const { maxLine, eol, trim, previousBlocks } = this
     const lines = []
 
     function outputLine(final: Buffer) {
@@ -42,9 +50,14 @@ export class LineReader {
         lineLength = maxLine
       }
 
-      const res = previousBlocks.length
+      let res = previousBlocks.length
         ? Buffer.concat([...previousBlocks, final], lineLength)
         : final.subarray(0, lineLength)
+
+      if (res[res.length - 1] === trim) {
+        res = res.subarray(0, -1)
+      }
+
       lines.push(res)
 
       // reset line data

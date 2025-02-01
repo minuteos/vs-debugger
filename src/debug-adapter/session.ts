@@ -6,6 +6,8 @@ import { BreakpointInfo, BreakpointInsertCommandResult, FrameInfo, MiCommands, M
 import { createGdbServer } from '@my/gdb/servers/factory'
 import { GdbServer } from '@my/gdb/servers/gdb-server'
 import { getLog, getTrace, traceEnabled } from '@my/services'
+import { createSmu } from '@my/smu/factory'
+import { Smu } from '@my/smu/smu'
 import { findExecutable } from '@my/util'
 import { ContinuedEvent, DebugSession, InitializedEvent, Response, Scope, StoppedEvent } from '@vscode/debugadapter'
 import { DebugProtocol } from '@vscode/debugprotocol'
@@ -22,6 +24,7 @@ const trace = getTrace('DAP')
 export class MinuteDebugSession extends DebugSession {
   private gdb?: GdbInstance
   private server?: GdbServer
+  private smu?: Smu
   private disassemblyCache?: DisassemblyCache
   private disposableStack = new AsyncDisposableStack()
 
@@ -69,9 +72,11 @@ export class MinuteDebugSession extends DebugSession {
       this.execStatusChange(exec)
     }))
     this.server = this.disposableStack.use(createGdbServer(config))
+    this.smu = this.disposableStack.use(createSmu(config))
     await Promise.all([
       this.gdb.start(await findExecutable('arm-none-eabi-gdb')),
       this.server.start(),
+      this.smu?.connect(),
     ])
 
     await this.command.gdbSet('mi-async', 1)

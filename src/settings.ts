@@ -6,10 +6,18 @@ const trace = getTrace('Settings')
 
 export interface Settings {
   trace: string[]
+  defaults: {
+    server: Record<string, Record<string, unknown>>
+    smu: Record<string, Record<string, unknown>>
+  }
 }
 
 const defaults: Settings = Object.freeze({
   trace: [],
+  defaults: {
+    server: {},
+    smu: {},
+  },
 })
 
 export let settings = defaults

@@ -23,6 +23,12 @@
         "qemu",
         "bmp"
       ]
+    },
+    "smu": {
+      "type": "string",
+      "enum": [
+        "stlink"
+      ]
     }
   }
 }
