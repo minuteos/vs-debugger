@@ -80,6 +80,7 @@ export class MinuteDebugSession extends DebugSession {
     ])
 
     await this.command.gdbSet('mi-async', 1)
+    await this.command.gdbSet('mem', 'inaccessible-by-default', 0)
     await this.command.targetSelect('extended-remote', this.server.address)
 
     await this.server.launchOrAttach(this.command, attach)
@@ -121,7 +122,7 @@ export class MinuteDebugSession extends DebugSession {
     if (args.context === 'repl' && args.expression.startsWith('>')) {
       // execute console command
       try {
-        const res = await this.command.interpreterExec('console', args.expression.substring(1))
+        const res = await this.command.console(args.expression.substring(1))
         response.body = {
           result: (res.$console ?? ''),
           variablesReference: 0,

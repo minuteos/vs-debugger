@@ -33,7 +33,7 @@ export class BmpGdbServer extends GdbServer<BmpGdbServerOptions> {
   async launchOrAttach(mi: MiCommands, attach: boolean): Promise<void> {
     log.info('Scanning targets...')
 
-    const res = await mi.interpreterExec('console', 'monitor swdp_scan')
+    const res = await mi.monitor('swdp_scan')
     const [voltage, result, , ...targets] = (res.$output ?? '').split('\n')
     if (result != 'Available Targets:') {
       throw new DebugError('BMP swdp_scan failed:\n\n{result}', { result }, undefined, ErrorCode.BmpScanError)

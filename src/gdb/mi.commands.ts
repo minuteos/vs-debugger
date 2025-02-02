@@ -104,7 +104,7 @@ type DisassemblyOptions = DisassemblyTarget & {
 export interface MiCommands {
   targetSelect(type: 'extended-remote', address: string): Promise<MiCommandResult>
   targetAttach(target: number | string): Promise<MiCommandResult>
-  gdbSet(option: 'mi-async', value: unknown): Promise<MiCommandResult>
+  gdbSet(...optionAndValue: unknown[]): Promise<MiCommandResult>
   interpreterExec(interpreter: 'console', ...command: string[]): Promise<MiCommandResult>
 
   // breakpoint commands
@@ -142,6 +142,14 @@ export interface MiCommands {
 
   // data commands
   dataDisassemble(opts: DisassemblyOptions): Promise<DisassemblyResult>
+  dataReadMemoryBytes(addr: number, len: number): Promise<DataReadResult>
+  dataWriteMemoryBytes(addr: number, contents: string): Promise<DataReadResult>
+
+  // custom commands
+  console(...command: string[]): Promise<MiCommandResult>
+  monitor(...command: string[]): Promise<MiCommandResult>
+  readMemory(addr: number, len: number): Promise<Buffer>
+  writeMemory(addr: number, data: Buffer): Promise<void>
 }
 
 export interface BreakpointInfo {
@@ -243,4 +251,13 @@ export interface DisassemblySourceInstruction {
 
 export interface DisassemblyResult extends MiCommandResult {
   asm_insns: DisassemblySourceInstruction[] | DisassemblyInstruction[]
+}
+
+export interface DataReadResult extends MiCommandResult {
+  memory: {
+    begin: string
+    end: string
+    offset: string
+    contents: string
+  }[]
 }

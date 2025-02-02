@@ -54,9 +54,30 @@ export class GdbMi extends DisposableContainer {
       log.debug('Cleanup complete')
     })
 
-    this.command = new Proxy({} as MiCommands, {
-      get: (_, prop: string) =>
-        (...args: string[]) => this.execute(prop, ...args),
+    this.command = new Proxy({
+      console(...command: string[]) {
+        return this.interpreterExec('console', command.join(' '))
+      },
+
+      monitor(...command: string[]) {
+        return this.console('monitor', ...command)
+      },
+
+      async readMemory(addr: number, len: number) {
+        const res = await this.dataReadMemoryBytes(addr, len)
+        const buf = Buffer.alloc(len)
+        for (const { offset, contents } of res.memory) {
+          buf.write(contents, parseInt(offset), 'hex')
+        }
+        return buf
+      },
+
+      async writeMemory(addr: number, data: Buffer) {
+        await this.dataWriteMemoryBytes(addr, data.toString('hex'))
+      },
+    } as MiCommands, {
+      get: (target, prop: keyof MiCommands) =>
+        target[prop] as unknown ?? ((...args: string[]) => this.execute(prop, ...args)),
     })
 
     this._send = promisify(output.write.bind(output))
