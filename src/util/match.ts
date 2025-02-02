@@ -21,6 +21,11 @@ function traceVal(val: unknown): string {
 }
 
 function match<T>(name: string, criterion: MatchValueOrFunction<T>, value: T, trace?: TraceFunction): boolean {
+  if (criterion === undefined) {
+    // anything matches
+    return true
+  }
+
   if (typeof criterion === 'function') {
     const res = (criterion as MatchFunction<T>)(value)
     if (res) {
