@@ -1,5 +1,5 @@
 import { getLog } from '@my/services'
-import { readLines, Signal } from '@my/util'
+import { DisposableContainer, readLines, Signal } from '@my/util'
 import { ChildProcessWithoutNullStreams, spawn } from 'child_process'
 import { Readable } from 'stream'
 
@@ -13,7 +13,7 @@ interface ChildProcessOptions {
 /**
  * A class representing a child process, managing its lifetime
  */
-export class ChildProcess extends AsyncDisposableStack {
+export class ChildProcess extends DisposableContainer {
   readonly process: ChildProcessWithoutNullStreams
   readonly arguments: string[]
   readonly pid: number

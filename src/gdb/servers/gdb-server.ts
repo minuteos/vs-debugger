@@ -1,7 +1,7 @@
 import { LaunchConfiguration } from '@my/configuration'
 import { MiCommands } from '@my/gdb/mi.commands'
 import { ChildProcess, getLog } from '@my/services'
-import { pick } from '@my/util'
+import { DisposableContainer, pick } from '@my/util'
 
 const log = getLog('GDBServer')
 
@@ -9,7 +9,7 @@ export interface GdbServerOptions {
   launchConfig: LaunchConfiguration
 }
 
-export abstract class GdbServer<TOptions extends GdbServerOptions = GdbServerOptions> extends AsyncDisposableStack {
+export abstract class GdbServer<TOptions extends GdbServerOptions = GdbServerOptions> extends DisposableContainer {
   constructor(protected readonly options: TOptions) {
     super()
   }

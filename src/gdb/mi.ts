@@ -1,6 +1,6 @@
 import { MiError } from '@my/errors'
 import { getLog, getTrace } from '@my/services'
-import { camelToKebab, kebabToCamel, promiseWithResolvers, PromiseWithResolvers, readLines, Signal } from '@my/util'
+import { camelToKebab, DisposableContainer, kebabToCamel, promiseWithResolvers, PromiseWithResolvers, readLines, Signal } from '@my/util'
 import { Sema } from 'async-sema'
 import { Readable, Writable } from 'stream'
 import { promisify } from 'util'
@@ -24,7 +24,7 @@ interface PendingCommand extends PromiseWithResolvers<MiCommandResult> {
   console?: string
 }
 
-export class GdbMi extends AsyncDisposableStack {
+export class GdbMi extends DisposableContainer {
   private readonly receiverPromise: Promise<void>
   private readonly idleSignal = new Signal()
   readonly command: MiCommands

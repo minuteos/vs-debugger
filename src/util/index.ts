@@ -1,4 +1,5 @@
 export * from './case'
+export * from './disposable'
 export * from './exception'
 export * from './match'
 export * from './net'

@@ -1,6 +1,6 @@
 import { LaunchConfiguration } from '@my/configuration'
 import { ChildProcess, getLog, getRawLog } from '@my/services'
-import { pick } from '@my/util'
+import { DisposableContainer, pick } from '@my/util'
 
 import { GdbMi } from './mi'
 import { MiCommands, MiExecStatus } from './mi.commands'
@@ -9,7 +9,7 @@ import { MiStreamType } from './mi.events'
 const log = getLog('GDB')
 const rawLog = getRawLog('GDB')
 
-export class GdbInstance extends AsyncDisposableStack {
+export class GdbInstance extends DisposableContainer {
   private gdb?: ChildProcess
   private _mi!: GdbMi
 
