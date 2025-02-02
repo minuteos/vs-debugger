@@ -5,12 +5,14 @@ import { GdbInstance } from '@my/gdb/instance'
 import { BreakpointInfo, BreakpointInsertCommandResult, FrameInfo, MiCommands, MiExecStatus } from '@my/gdb/mi.commands'
 import { createGdbServer } from '@my/gdb/servers/factory'
 import { GdbServer } from '@my/gdb/servers/gdb-server'
+import { SwoSession } from '@my/gdb/swo'
 import { getLog, getTrace, traceEnabled } from '@my/services'
 import { createSmu } from '@my/smu/factory'
 import { Smu } from '@my/smu/smu'
 import { findExecutable } from '@my/util'
 import { ContinuedEvent, DebugSession, InitializedEvent, Response, Scope, StoppedEvent } from '@vscode/debugadapter'
 import { DebugProtocol } from '@vscode/debugprotocol'
+import * as vscode from 'vscode'
 
 import * as mi from './mi.mappings'
 import { mapInstruction } from './mi.mappings'
@@ -84,6 +86,15 @@ export class MinuteDebugSession extends DebugSession {
     await this.command.targetSelect('extended-remote', this.server.address)
 
     await this.server.launchOrAttach(this.command, attach)
+
+    if (this.server.swoStream) {
+      const swo = this.disposableStack.use(new SwoSession(this.command, this.server.swoStream, (swo) => {
+        if (!swo.dwt && swo.ch === 0) {
+          vscode.debug.activeDebugConsole.append(swo.data.toString())
+        }
+      }))
+      await swo.start()
+    }
 
     this.sendEvent(new InitializedEvent())
   }

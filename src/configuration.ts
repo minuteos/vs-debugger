@@ -1,3 +1,5 @@
+import { UsbInterfaceMatch } from '@my/services/usb'
+
 export enum ServerType {
   Qemu = 'qemu',
   Bmp = 'bmp',
@@ -13,6 +15,7 @@ export interface BmpServerConfiguration {
   type: 'bmp'
   port?: string
   serial?: string
+  swoPort: UsbInterfaceMatch
 }
 
 export type ServerConfiguration = QemuServerConfiguration | BmpServerConfiguration

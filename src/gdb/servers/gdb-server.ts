@@ -2,6 +2,7 @@ import { LaunchConfiguration } from '@my/configuration'
 import { MiCommands } from '@my/gdb/mi.commands'
 import { ChildProcess, getLog } from '@my/services'
 import { DisposableContainer, pick } from '@my/util'
+import { Readable } from 'stream'
 
 const log = getLog('GDBServer')
 
@@ -17,7 +18,8 @@ export abstract class GdbServer<TOptions extends GdbServerOptions = GdbServerOpt
   abstract start(): Promise<void>
   abstract launchOrAttach(mi: MiCommands, attach: boolean): Promise<void>
 
-  abstract get address(): string
+  abstract readonly address: string
+  declare readonly swoStream?: Readable
 }
 
 export abstract class ExecutableGdbServer<T extends GdbServerOptions> extends GdbServer<T> {
