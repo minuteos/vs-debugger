@@ -30,15 +30,23 @@ export function traceEnabled(category: string): boolean {
   return getCache()[category]
 }
 
-export function getTrace(category: string): (...args: unknown[]) => void {
+export function getTrace(category: string): ((...args: unknown[]) => void) & { enabled: boolean } {
   if (!categories?.[category]) {
     categories = { ...categories, [category]: true }
   }
 
   const log = getLog(category)
-  return (...args) => {
+  const res = (...args: unknown[]) => {
     if (traceEnabled(category)) {
       log.trace(...args)
     }
   }
+
+  Object.defineProperty(res, 'enabled', {
+    get() {
+      return traceEnabled(category)
+    },
+  })
+
+  return res as ReturnType<typeof getTrace>
 }
