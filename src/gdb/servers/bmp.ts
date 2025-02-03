@@ -56,7 +56,7 @@ export class BmpGdbServer extends GdbServer<BmpGdbServerOptions> {
     this.set(this, 'swoStream', stream)
   }
 
-  async launchOrAttach(mi: MiCommands, attach: boolean): Promise<void> {
+  async attach(mi: MiCommands): Promise<void> {
     log.info('Scanning targets...')
 
     const res = await mi.monitor('swdp_scan')
@@ -85,7 +85,5 @@ export class BmpGdbServer extends GdbServer<BmpGdbServerOptions> {
     } else {
       await mi.monitor('traceswo enable')
     }
-
-    void attach
   }
 }

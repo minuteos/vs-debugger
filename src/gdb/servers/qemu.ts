@@ -33,7 +33,7 @@ export class QemuGdbServer extends ExecutableGdbServer<QemuGdbServerOptions> {
     ]
   }
 
-  launchOrAttach(): Promise<void> {
+  attach(): Promise<void> {
     return Promise.resolve()
   }
 }

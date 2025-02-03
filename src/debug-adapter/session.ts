@@ -6,7 +6,7 @@ import { BreakpointInfo, BreakpointInsertCommandResult, FrameInfo, MiCommands, M
 import { createGdbServer } from '@my/gdb/servers/factory'
 import { GdbServer } from '@my/gdb/servers/gdb-server'
 import { SwoSession } from '@my/gdb/swo'
-import { getLog, getTrace, traceEnabled } from '@my/services'
+import { getLog, getTrace, progress, traceEnabled } from '@my/services'
 import { createSmu } from '@my/smu/factory'
 import { Smu } from '@my/smu/smu'
 import { findExecutable } from '@my/util'
@@ -29,6 +29,8 @@ export class MinuteDebugSession extends DebugSession {
   private smu?: Smu
   private disassemblyCache?: DisassemblyCache
   private disposableStack = new AsyncDisposableStack()
+  private suppressExecEvents = true
+  private lastExecEvent?: ContinuedEvent | StoppedEvent
 
   get command(): MiCommands {
     const gdb = this.gdb
@@ -62,14 +64,14 @@ export class MinuteDebugSession extends DebugSession {
   }
 
   async command_launch(response: DebugProtocol.LaunchResponse, args: DebugProtocol.LaunchRequestArguments) {
-    await this.launchOrAttach(args as LaunchConfiguration, false)
-  }
-
-  async command_attach(response: DebugProtocol.AttachResponse, args: DebugProtocol.AttachRequestArguments) {
     await this.launchOrAttach(args as LaunchConfiguration, true)
   }
 
-  private async launchOrAttach(config: LaunchConfiguration, attach: boolean) {
+  async command_attach(response: DebugProtocol.AttachResponse, args: DebugProtocol.AttachRequestArguments) {
+    await this.launchOrAttach(args as LaunchConfiguration, false)
+  }
+
+  private async launchOrAttach(config: LaunchConfiguration, loadProgram: boolean) {
     this.gdb = this.disposableStack.use(new GdbInstance(config, (exec) => {
       this.execStatusChange(exec)
     }))
@@ -85,7 +87,7 @@ export class MinuteDebugSession extends DebugSession {
     await this.command.gdbSet('mem', 'inaccessible-by-default', 0)
     await this.command.targetSelect('extended-remote', this.server.address)
 
-    await this.server.launchOrAttach(this.command, attach)
+    await this.server.attach(this.command)
 
     if (this.server.swoStream) {
       const swo = this.disposableStack.use(new SwoSession(this.command, this.server.swoStream, (swo) => {
@@ -96,7 +98,20 @@ export class MinuteDebugSession extends DebugSession {
       await swo.start()
     }
 
+    if (loadProgram) {
+      await progress('Loading program', async (p) => {
+        await this.command.targetDownload((status) => {
+          p.report(status.section, status.sectionSent / status.sectionSize)
+        })
+      })
+      await this.command.console('starti')
+    }
+
     this.sendEvent(new InitializedEvent())
+    this.suppressExecEvents = false
+    if (this.lastExecEvent) {
+      this.sendEvent(this.lastExecEvent)
+    }
   }
 
   async command_disconnect(response: DebugProtocol.DisconnectResponse, args: DebugProtocol.DisconnectArguments) {
@@ -326,14 +341,18 @@ export class MinuteDebugSession extends DebugSession {
     switch (evt.$class) {
       case 'running':
         if (evt.threadId === 'all') {
-          this.sendEvent(new ContinuedEvent(0, true))
+          this.lastExecEvent = new ContinuedEvent(0, true)
         } else {
-          this.sendEvent(new ContinuedEvent(evt.threadId))
+          this.lastExecEvent = new ContinuedEvent(evt.threadId)
         }
         break
       case 'stopped':
-        this.sendEvent(new StoppedEvent(evt.reason, evt.threadId))
+        this.lastExecEvent = new StoppedEvent(evt.reason, evt.threadId)
         break
+    }
+
+    if (!this.suppressExecEvents) {
+      this.sendEvent(this.lastExecEvent)
     }
   }
   // #endregion

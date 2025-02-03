@@ -16,7 +16,7 @@ export abstract class GdbServer<TOptions extends GdbServerOptions = GdbServerOpt
   }
 
   abstract start(): Promise<void>
-  abstract launchOrAttach(mi: MiCommands, attach: boolean): Promise<void>
+  abstract attach(mi: MiCommands): Promise<void>
 
   abstract readonly address: string
   declare readonly swoStream?: Readable

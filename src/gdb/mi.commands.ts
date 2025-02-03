@@ -1,10 +1,21 @@
 export interface MiResult {
   $class: string
+  $results?: unknown[]
   [key: string]: unknown
 }
 
 export type MiNotify = MiResult
-export type MiStatus = MiResult
+
+export interface DownloadStatus {
+  $class: 'download'
+  section: string
+  sectionSize: number
+  sectionSent: number
+  totalSize: number
+  totalSent: number
+}
+
+export type MiStatus = DownloadStatus
 
 // #region Exec status events
 export interface RunningExecStatus extends MiResult {
@@ -101,9 +112,14 @@ type DisassemblyOptions = DisassemblyTarget & {
   source: boolean
 }
 
+export interface CommandEvents {
+  status: (status: MiStatus) => void
+}
+
 export interface MiCommands {
   targetSelect(type: 'extended-remote', address: string): Promise<MiCommandResult>
   targetAttach(target: number | string): Promise<MiCommandResult>
+  targetDownload($onStatus: (status: DownloadStatus) => void): Promise<MiCommandResult>
   gdbSet(...optionAndValue: unknown[]): Promise<MiCommandResult>
   interpreterExec(interpreter: 'console', ...command: string[]): Promise<MiCommandResult>
 

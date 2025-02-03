@@ -108,7 +108,7 @@ export class GdbMi extends DisposableContainer {
 
     function parseToken() {
       let i
-      for (i = 0; i < line.length && line[0] >= '0' && line[i] <= '9'; i++);
+      for (i = 0; i < line.length && line[i] >= '0' && line[i] <= '9'; i++);
       const token = i ? Number(line.substring(0, i)) : undefined
       line = line.substring(i)
       return token
@@ -293,9 +293,19 @@ export class GdbMi extends DisposableContainer {
         }
         while (line.startsWith(',')) {
           line = line.substring(1)
-          const [n, v] = parseResult()
-          if (n) {
-            res[n] = v
+          const val = parseValue()
+          if (val !== undefined) {
+            if (typeof val === 'object' && !line.length && Object.keys(res).length === 1) {
+              // single object result, merge it into res
+              Object.assign(res, val)
+            } else {
+              (res.$results ??= []).push(val)
+            }
+          } else {
+            const [n, v] = parseResult()
+            if (n) {
+              res[n] = v
+            }
           }
         }
 
@@ -326,8 +336,8 @@ export class GdbMi extends DisposableContainer {
             break
 
           case '+':
-            cmd?.onStatus?.(res)
-            this.callbacks?.status?.(res)
+            cmd?.onStatus?.(res as unknown as MiStatus)
+            this.callbacks?.status?.(res as unknown as MiStatus)
             break
 
           case '=':
@@ -396,6 +406,13 @@ export class GdbMi extends DisposableContainer {
       command,
       token,
     }
+
+    const statusIndex = args.findIndex(a => typeof a === 'function')
+    if (statusIndex >= 0) {
+      this.pendingCommand.onStatus = args[statusIndex] as (status: MiStatus) => void
+      args.splice(statusIndex, 1)
+    }
+
     traceCmd('>', token, command, args)
     try {
       await this.send(`${token.toString()}-${camelToKebab(command)} ${args.flatMap(formatArg).join(' ')}`)
