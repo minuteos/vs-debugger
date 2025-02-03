@@ -32,6 +32,7 @@ export class BmpGdbServer extends GdbServer<BmpGdbServerOptions> {
       })
       ?? throwError(new Error('Failed to autodetect BMP port.\n\nAre you sure you have a BMP connected?'))
 
+    log.info('Using serial port', this.port)
     await this.startSwo()
   }
 
@@ -44,10 +45,11 @@ export class BmpGdbServer extends GdbServer<BmpGdbServerOptions> {
     })
 
     if (!swoInterface) {
-      log.warn('No BMP SWO endpoint found')
+      log.warn('No BMP SWO interface found')
       return
     }
 
+    log.info('SWO interface', swoInterface)
     this.use(await swoInterface.claim())
     const stream = new Readable()
     this.use(swoInterface.inToStream(stream))

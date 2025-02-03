@@ -84,13 +84,13 @@ export class GdbMi extends DisposableContainer {
   }
 
   private async receiver(): Promise<void> {
-    log.info('Starting receiver')
+    log.debug('Starting receiver')
     try {
       for await (const lineBuf of readLines(this.input, { maximumLineLength: 1024 * 1024 })) {
         this.process(String(lineBuf))
       }
 
-      log.info('Receiver finished')
+      log.debug('Receiver finished')
       this.idleSignal.reject(new Error('GDB is gone'))
     } catch (error) {
       log.error('Receiver failed', error)

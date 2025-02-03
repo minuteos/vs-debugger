@@ -52,18 +52,18 @@ export class StlinkSmu extends Smu {
 
     log.info('Connecting to STLink-V3PWR', path)
     await promisify(ser.open.bind(ser))()
-    log.info('Connected to STLink-V3PWR', path)
+    log.debug('Connected to STLink-V3PWR', path)
 
     const receiver = this.receiver(ser)
     this._send = promisify(ser.write.bind(ser))
 
     this.defer(async () => {
       this.done = true
-      log.info('Disconnecting from STLink-V3PWR', path)
+      log.debug('Disconnecting from STLink-V3PWR', path)
       await promisify(ser.close.bind(ser))()
       log.info('Disconnected from STLink-V3PWR', path)
       await receiver
-      log.info('Cleanup complete')
+      log.debug('Cleanup complete')
     })
 
     // disable unnecessary prompt
@@ -83,11 +83,16 @@ export class StlinkSmu extends Smu {
   }
 
   async power(state: boolean) {
+    if (state) {
+      log.info('Turning on', this.output.toUpperCase(), 'at', this.voltage, 'V')
+    } else {
+      log.info('Turning off', this.output.toUpperCase())
+    }
     await this.execute('pwr', this.output, state)
   }
 
   private async receiver(ser: SerialPort) {
-    log.info('Starting receiver')
+    log.debug('Starting receiver')
     try {
       // cannot use readLines directly because we'll need to fall back to binary when streaming
       const lr = new LineReader()
@@ -102,12 +107,12 @@ export class StlinkSmu extends Smu {
           }
         }
       }
-      log.info('Receiver finished')
+      log.debug('Receiver finished')
     } catch (error) {
       if (!this.done) {
         log.error('Receiver failed', error)
       } else {
-        log.info('Receiver stopped')
+        log.debug('Receiver stopped')
       }
     }
   }

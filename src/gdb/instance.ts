@@ -46,14 +46,14 @@ export class GdbInstance extends DisposableContainer {
     this._mi = mi
 
     this.defer(() => {
-      log.info('Tearing down GDB')
+      log.debug('Stopping')
     })
 
     if (!await mi.idle(5000)) {
       throw new Error('Timeout waiting for GDB to start')
     }
 
-    log.info('Started', executable)
+    log.debug('Started', executable)
   }
 
   get mi(): GdbMi {
