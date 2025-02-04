@@ -325,6 +325,13 @@ export class MinuteDebugSession extends DebugSession {
     }
   }
 
+  command_setExceptionBreakpoints(response: DebugProtocol.SetExceptionBreakpointsResponse, args: DebugProtocol.SetExceptionBreakpointsArguments) {
+    // no support yet
+    response.body = {
+      breakpoints: [],
+    }
+  }
+
   async command_disassemble(response: DebugProtocol.DisassembleResponse, args: DebugProtocol.DisassembleArguments) {
     const base = parseInt(args.memoryReference) + (args.offset ?? 0)
     if (Number.isNaN(base)) {
