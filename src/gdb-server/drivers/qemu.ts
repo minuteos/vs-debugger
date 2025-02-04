@@ -1,7 +1,7 @@
 import { QemuServerConfiguration } from '@my/configuration'
 import { allocateTcpPort, findExecutable } from '@my/util'
 
-import { ExecutableGdbServer, GdbServerOptions } from './gdb-server'
+import { ExecutableGdbServer, GdbServerOptions } from '../gdb-server'
 
 const DEFAULT_MACHINE = 'netduinoplus2'
 

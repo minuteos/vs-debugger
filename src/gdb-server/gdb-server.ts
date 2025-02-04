@@ -1,7 +1,8 @@
 import { LaunchConfiguration } from '@my/configuration'
 import { MiCommands } from '@my/gdb/mi.commands'
+import { Plugin } from '@my/plugin'
 import { ChildProcess, getLog } from '@my/services'
-import { DisposableContainer, pick } from '@my/util'
+import { pick } from '@my/util'
 import { Readable } from 'stream'
 
 const log = getLog('GDBServer')
@@ -10,11 +11,7 @@ export interface GdbServerOptions {
   launchConfig: LaunchConfiguration
 }
 
-export abstract class GdbServer<TOptions extends GdbServerOptions = GdbServerOptions> extends DisposableContainer {
-  constructor(protected readonly options: TOptions) {
-    super()
-  }
-
+export abstract class GdbServer<TOptions extends GdbServerOptions = GdbServerOptions> extends Plugin<TOptions> {
   abstract start(): Promise<void>
   abstract attach(mi: MiCommands): Promise<void>
 

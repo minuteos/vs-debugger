@@ -1,4 +1,7 @@
+import { InputLaunchConfiguration, ServerConfiguration, SmuConfiguration } from '@my/configuration'
+import { defaults } from '@my/defaults'
 import { getLog, getTrace } from '@my/services'
+import { mergeDefaults } from '@my/util'
 import * as vscode from 'vscode'
 
 const log = getLog('Settings')
@@ -6,19 +9,12 @@ const trace = getTrace('Settings')
 
 export interface Settings {
   trace: string[]
+  server: Record<string, ServerConfiguration>
+  smu: Record<string, SmuConfiguration>
   defaults: {
-    server: Record<string, Record<string, unknown>>
-    smu: Record<string, Record<string, unknown>>
+    launch: Partial<InputLaunchConfiguration>
   }
 }
-
-const defaults: Settings = Object.freeze({
-  trace: [],
-  defaults: {
-    server: {},
-    smu: {},
-  },
-})
 
 export let settings = defaults
 
@@ -32,7 +28,7 @@ function vsLoadSettings(): Settings {
     const { has, get, update, inspect, ...vsCfg } = vscode.workspace.getConfiguration('minuteDebug')
     const vs: VsSettings = vsCfg as VsSettings
     const patches = {}
-    settings = Object.freeze({ ...defaults, ...vs, ...patches })
+    settings = Object.freeze(mergeDefaults({ ...vs, ...patches }, defaults))
     trace(settings)
   }
 

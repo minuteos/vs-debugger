@@ -1,4 +1,4 @@
-import { LaunchConfiguration, StlinkSmuConfiguration } from '@my/configuration'
+import { StlinkSmuConfiguration } from '@my/configuration'
 import { getLog } from '@my/services'
 import { findSerialPort } from '@my/services/serial'
 import { LineReader, PromiseWithResolvers, promiseWithResolvers } from '@my/util'
@@ -7,41 +7,31 @@ import { Sema } from 'async-sema'
 import { SerialPort } from 'serialport'
 import { promisify } from 'util'
 
-import { Smu } from './smu'
+import { Smu, SmuOptions } from '../smu'
 
 const log = getLog('STLink-SMU')
 
-const ST_VID = 0x0483
-const STLINK_V3PWR_PID = 0x3757
-
-const knownDeviceIds = [
-  { vid: ST_VID, pid: STLINK_V3PWR_PID },
-]
+interface StlinkSmuOptions extends SmuOptions {
+  smuConfig: StlinkSmuConfiguration
+}
 
 interface PendingCommand extends PromiseWithResolvers<string> {
   command: string
 }
 
-export class StlinkSmu extends Smu {
+export class StlinkSmu extends Smu<StlinkSmuOptions> {
   private _send?: (chunk: unknown, encoding?: BufferEncoding) => Promise<void>
   private readonly commandSema = new Sema(1)
   private done = false
   private pendingCommand?: PendingCommand
 
-  get output() { return this.config.output ?? 'vout' }
-  get voltage() { return this.config.voltage ?? 3.0 }
-
-  constructor(readonly config: StlinkSmuConfiguration, readonly launchConfig: LaunchConfiguration) {
-    super()
-  }
+  private readonly config = this.options.smuConfig
+  private readonly output = this.config.output
+  private readonly voltage = this.config.voltage
 
   async connect(): Promise<void> {
     const path = this.config.port
-      ?? await findSerialPort({
-        deviceId: knownDeviceIds,
-        index: 1,
-        ...this.config,
-      })
+      ?? await findSerialPort(this.config)
       ?? throwError('Failed to autodetect STLink V3-PWR SMU port.\n\nAre you sure you have one connected?')
 
     const ser = new SerialPort({

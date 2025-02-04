@@ -1,5 +1,11 @@
-import { DisposableContainer } from '@my/util'
+import { LaunchConfiguration, SmuConfiguration } from '@my/configuration'
+import { Plugin } from '@my/plugin'
 
-export abstract class Smu extends DisposableContainer {
+export interface SmuOptions {
+  launchConfig: LaunchConfiguration
+  smuConfig: SmuConfiguration
+}
+
+export abstract class Smu<TOptions extends SmuOptions = SmuOptions> extends Plugin<TOptions> {
   abstract connect(): Promise<void>
 }

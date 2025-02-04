@@ -1,10 +1,10 @@
-import { LaunchConfiguration } from '@my/configuration'
+import { expandConfiguration, InputLaunchConfiguration, LaunchConfiguration } from '@my/configuration'
 import { DisassemblyCache } from '@my/debug-adapter/disassembly'
 import { configureError, DebugError, ErrorCode, ErrorDestination, MiError } from '@my/errors'
+import { createGdbServer } from '@my/gdb-server/factory'
+import { GdbServer } from '@my/gdb-server/gdb-server'
 import { GdbInstance } from '@my/gdb/instance'
 import { BreakpointInfo, BreakpointInsertCommandResult, FrameInfo, MiCommands, MiExecStatus } from '@my/gdb/mi.commands'
-import { createGdbServer } from '@my/gdb/servers/factory'
-import { GdbServer } from '@my/gdb/servers/gdb-server'
 import { SwoSession } from '@my/gdb/swo'
 import { getLog, getTrace, progress, traceEnabled } from '@my/services'
 import { createSmu } from '@my/smu/factory'
@@ -15,7 +15,6 @@ import { DebugProtocol } from '@vscode/debugprotocol'
 import * as vscode from 'vscode'
 
 import * as mi from './mi.mappings'
-import { mapInstruction } from './mi.mappings'
 
 type DebugHandler = (response: DebugProtocol.Response, args: unknown, request: DebugProtocol.Request) => Promise<string | boolean>
 type DebugHandlers = Record<string, DebugHandler>
@@ -64,11 +63,11 @@ export class MinuteDebugSession extends DebugSession {
   }
 
   async command_launch(response: DebugProtocol.LaunchResponse, args: DebugProtocol.LaunchRequestArguments) {
-    await this.launchOrAttach(args as LaunchConfiguration, true)
+    await this.launchOrAttach(expandConfiguration(args as InputLaunchConfiguration), true)
   }
 
   async command_attach(response: DebugProtocol.AttachResponse, args: DebugProtocol.AttachRequestArguments) {
-    await this.launchOrAttach(args as LaunchConfiguration, false)
+    await this.launchOrAttach(expandConfiguration(args as InputLaunchConfiguration), false)
   }
 
   private async launchOrAttach(config: LaunchConfiguration, loadProgram: boolean) {
@@ -328,7 +327,7 @@ export class MinuteDebugSession extends DebugSession {
     const cache = this.disassemblyCache ??= new DisassemblyCache(this.command)
     const res = await cache.fill(base, args.instructionOffset ?? 0, args.instructionCount)
     response.body = {
-      instructions: res.map(mapInstruction),
+      instructions: res.map(mi.mapInstruction),
     }
   }
 

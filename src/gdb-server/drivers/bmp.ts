@@ -3,16 +3,13 @@ import { DebugError, ErrorCode } from '@my/errors'
 import { MiCommands } from '@my/gdb/mi.commands'
 import { getLog } from '@my/services'
 import { findSerialPort } from '@my/services/serial'
-import { EndpointDirection, findUsbInterface, TransferType } from '@my/services/usb'
-import { throwError } from '@my/util'
+import { findUsbInterface } from '@my/services/usb'
+import { mergeDefaults, throwError } from '@my/util'
 import { Readable } from 'stream'
 
-import { GdbServer, GdbServerOptions } from './gdb-server'
+import { GdbServer, GdbServerOptions } from '../gdb-server'
 
 const log = getLog('BMP')
-
-const BMP_VID = 0x1d50
-const BMP_PID = 0x6018
 
 interface BmpGdbServerOptions extends GdbServerOptions {
   serverConfig: BmpServerConfiguration
@@ -26,10 +23,7 @@ export class BmpGdbServer extends GdbServer<BmpGdbServerOptions> {
 
   async start(): Promise<void> {
     this.port = this.options.serverConfig.port
-      ?? await findSerialPort({
-        deviceId: { vid: BMP_VID, pid: BMP_PID },
-        ...this.options.serverConfig,
-      })
+      ?? await findSerialPort(this.options.serverConfig)
       ?? throwError(new Error('Failed to autodetect BMP port.\n\nAre you sure you have a BMP connected?'))
 
     log.info('Using serial port', this.port)
@@ -37,12 +31,7 @@ export class BmpGdbServer extends GdbServer<BmpGdbServerOptions> {
   }
 
   async startSwo(): Promise<void> {
-    const swoInterface = await findUsbInterface({
-      deviceId: { vid: BMP_VID, pid: BMP_PID },
-      interface: '*Trace Capture',
-      endpoints: { type: TransferType.Bulk, direction: EndpointDirection.In },
-      ...this.options.serverConfig.swoPort,
-    })
+    const swoInterface = await findUsbInterface(mergeDefaults(this.options.serverConfig.swoPort, this.options.serverConfig))
 
     if (!swoInterface) {
       log.warn('No BMP SWO interface found')

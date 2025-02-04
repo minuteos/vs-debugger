@@ -29,3 +29,23 @@ export function omit<T extends object, K extends keyof T>(
       .filter(([key]) => !keys.includes(key as K)),
   ) as Omit<T, K>
 }
+
+export function mergeDefaults<T extends object>(target: T, defaults: Partial<T>) {
+  const res = { ...target }
+  for (const k in defaults) {
+    const v = defaults[k]
+    if (v === undefined || v === null) {
+      continue
+    }
+    if (!(k in res)) {
+      res[k] = v
+    } else {
+      const tv = res[k]
+      if (tv && typeof tv === 'object' && !Array.isArray(tv) && typeof v === 'object') {
+        // deep merge
+        res[k] = mergeDefaults(tv, v)
+      }
+    }
+  }
+  return res
+}
