@@ -3,13 +3,13 @@ import { configureError, DebugError, ErrorCode, ErrorDestination, MiError } from
 import { createGdbServer } from '@my/gdb-server/factory'
 import { GdbServer } from '@my/gdb-server/gdb-server'
 import { GdbInstance } from '@my/gdb/instance'
-import { BreakpointInfo, BreakpointInsertCommandResult, FrameInfo, MiCommands, MiExecStatus } from '@my/gdb/mi.commands'
+import { BreakpointInfo, BreakpointInsertCommandResult, FrameInfo, MiCommands, MiExecStatus, ValueFormat } from '@my/gdb/mi.commands'
 import { SwoSession } from '@my/gdb/swo'
 import { getLog, getTrace, progress, traceEnabled } from '@my/services'
 import { createSmu } from '@my/smu/factory'
 import { Smu } from '@my/smu/smu'
 import { findExecutable } from '@my/util'
-import { ContinuedEvent, DebugSession, InitializedEvent, Response, Scope, StoppedEvent } from '@vscode/debugadapter'
+import { ContinuedEvent, DebugSession, InitializedEvent, Response, Scope, StoppedEvent, Variable } from '@vscode/debugadapter'
 import { DebugProtocol } from '@vscode/debugprotocol'
 import * as vscode from 'vscode'
 
@@ -22,6 +22,15 @@ type DebugHandlers = Record<string, DebugHandler>
 
 const log = getLog('DebugSession')
 const trace = getTrace('DAP')
+
+/**
+ * Fake variable reference numbers for the scopes
+ */
+enum VariableScope {
+  Local = 4000000000,
+  Global,
+  Registers,
+}
 
 export class MinuteDebugSession extends DebugSession {
   private gdb?: GdbInstance
@@ -191,9 +200,29 @@ export class MinuteDebugSession extends DebugSession {
   command_scopes(response: DebugProtocol.ScopesResponse, args: DebugProtocol.ScopesArguments) {
     response.body = {
       scopes: [
-        new Scope('Local', 1, false),
-        new Scope('Global', 2, true),
+        new Scope('Local', VariableScope.Local, false),
+        new Scope('Global', VariableScope.Global, true),
+        new Scope('Registers', VariableScope.Registers, true),
       ],
+    }
+  }
+
+  private registerNames?: string[]
+
+  async command_variables(response: DebugProtocol.VariablesResponse, args: DebugProtocol.VariablesArguments) {
+    let variables: Variable[] = []
+
+    switch (args.variablesReference as VariableScope) {
+      case VariableScope.Registers: {
+        // special case
+        const registerNames = this.registerNames ??= (await this.command.dataListRegisterNames()).registerNames
+        const values = await this.command.dataListRegisterValues({ skipUnavailable: true }, ValueFormat.Natural)
+        variables = values.registerValues.map(({ number, value }) => new Variable(registerNames[number], value.toString()))
+        break
+      }
+    }
+    response.body = {
+      variables,
     }
   }
 

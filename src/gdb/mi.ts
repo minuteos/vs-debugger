@@ -374,10 +374,11 @@ export class GdbMi extends DisposableContainer {
             continue
           }
 
+          const opt = camelToKebab(k)
           if (k.length === 1) {
-            argSet.push(`-${k}`)
+            argSet.push(`-${opt}`)
           } else {
-            argSet.push(`--${k}`)
+            argSet.push(`--${opt}`)
           }
 
           if (v !== true) {

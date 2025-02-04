@@ -116,6 +116,15 @@ export interface CommandEvents {
   status: (status: MiStatus) => void
 }
 
+export enum ValueFormat {
+  Hexadecimal = 'x',
+  Octal = 'o',
+  Binary = 't',
+  Decimal = 'd',
+  Raw = 'r',
+  Natural = 'N',
+}
+
 export interface MiCommands {
   targetSelect(type: 'extended-remote', address: string): Promise<MiCommandResult>
   targetAttach(target: number | string): Promise<MiCommandResult>
@@ -160,6 +169,8 @@ export interface MiCommands {
   dataDisassemble(opts: DisassemblyOptions): Promise<DisassemblyResult>
   dataReadMemoryBytes(addr: number, len: number): Promise<DataReadResult>
   dataWriteMemoryBytes(addr: number, contents: string): Promise<DataReadResult>
+  dataListRegisterNames(): Promise<RegisterNamesResult>
+  dataListRegisterValues(opts: { skipUnavailable?: boolean }, format: ValueFormat): Promise<RegisterValuesResult>
 
   // custom commands
   console(...command: string[]): Promise<MiCommandResult>
@@ -275,5 +286,16 @@ export interface DataReadResult extends MiCommandResult {
     end: string
     offset: string
     contents: string
+  }[]
+}
+
+export interface RegisterNamesResult extends MiCommandResult {
+  registerNames: string[]
+}
+
+export interface RegisterValuesResult extends MiCommandResult {
+  registerValues: {
+    number: number
+    value: number | string
   }[]
 }
