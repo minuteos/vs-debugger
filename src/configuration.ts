@@ -44,6 +44,7 @@ export interface InputLaunchConfiguration {
   cwd?: string
   env?: Record<string, string>
   program: string
+  smartLoad?: boolean
 }
 
 export interface LaunchConfiguration {
@@ -52,6 +53,7 @@ export interface LaunchConfiguration {
   cwd?: string
   env?: Record<string, string>
   program: string
+  smartLoad?: boolean
 }
 
 function lookup<T extends { type: string } | undefined>(table: Record<string, T>, cfg?: string | T): T | undefined {

@@ -1,4 +1,5 @@
 export * from './case'
+export * from './crypto'
 export * from './disposable'
 export * from './exception'
 export * from './match'

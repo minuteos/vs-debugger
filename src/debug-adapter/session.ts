@@ -1,5 +1,4 @@
 import { expandConfiguration, InputLaunchConfiguration, LaunchConfiguration } from '@my/configuration'
-import { DisassemblyCache } from '@my/debug-adapter/disassembly'
 import { configureError, DebugError, ErrorCode, ErrorDestination, MiError } from '@my/errors'
 import { createGdbServer } from '@my/gdb-server/factory'
 import { GdbServer } from '@my/gdb-server/gdb-server'
@@ -14,7 +13,9 @@ import { ContinuedEvent, DebugSession, InitializedEvent, Response, Scope, Stoppe
 import { DebugProtocol } from '@vscode/debugprotocol'
 import * as vscode from 'vscode'
 
+import { DisassemblyCache } from './disassembly'
 import * as mi from './mi.mappings'
+import { smartLoadSkip } from './smart-load'
 
 type DebugHandler = (response: DebugProtocol.Response, args: unknown, request: DebugProtocol.Request) => Promise<string | boolean>
 type DebugHandlers = Record<string, DebugHandler>
@@ -98,11 +99,17 @@ export class MinuteDebugSession extends DebugSession {
     }
 
     if (loadProgram) {
-      await progress('Loading program', async (p) => {
-        await this.command.targetDownload((status) => {
-          p.report(status.section, status.sectionSent / status.sectionSize)
+      if (config.smartLoad
+        && this.server.identity
+        && await smartLoadSkip(config.cwd, config.program, this.server.identity)) {
+        log.info('SmartLoad: program already loaded')
+      } else {
+        await progress('Loading program', async (p) => {
+          await this.command.targetDownload((status) => {
+            p.report(`section ${status.section}`, status.sectionSent / status.sectionSize)
+          })
         })
-      })
+      }
       await this.command.console('starti')
     }
 

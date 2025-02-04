@@ -16,6 +16,11 @@ export abstract class GdbServer<TOptions extends GdbServerOptions = GdbServerOpt
   abstract attach(mi: MiCommands): Promise<void>
 
   abstract readonly address: string
+
+  /**
+   * Anything uniquely identifying the target device - used for determining if the same program needs to be loaded again
+   */
+  abstract readonly identity?: string
   declare readonly swoStream?: Readable
 }
 

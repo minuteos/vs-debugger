@@ -18,8 +18,10 @@ interface BmpGdbServerOptions extends GdbServerOptions {
 export class BmpGdbServer extends GdbServer<BmpGdbServerOptions> {
   private port = ''
   swoStream?: Readable = undefined
+  private uid?: string
 
   get address() { return this.port }
+  get identity() { return this.uid ?? this.port }
 
   async start(): Promise<void> {
     this.port = this.options.serverConfig.port
@@ -74,5 +76,7 @@ export class BmpGdbServer extends GdbServer<BmpGdbServerOptions> {
     } else {
       await mi.monitor('traceswo enable')
     }
+
+    this.uid = (await mi.monitor('uid')).$output
   }
 }
