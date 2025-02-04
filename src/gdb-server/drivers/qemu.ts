@@ -12,6 +12,7 @@ interface QemuGdbServerOptions extends GdbServerOptions {
 export class QemuGdbServer extends ExecutableGdbServer<QemuGdbServerOptions> {
   address!: string
   readonly identity = undefined
+  readonly skipLoad = true
 
   getExecutable(): Promise<string> {
     return findExecutable('qemu-system-arm')

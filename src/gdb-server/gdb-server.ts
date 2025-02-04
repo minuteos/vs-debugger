@@ -22,6 +22,7 @@ export abstract class GdbServer<TOptions extends GdbServerOptions = GdbServerOpt
    */
   abstract readonly identity?: string
   declare readonly swoStream?: Readable
+  declare readonly skipLoad?: boolean
 }
 
 export abstract class ExecutableGdbServer<T extends GdbServerOptions> extends GdbServer<T> {

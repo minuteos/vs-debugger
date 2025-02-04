@@ -98,7 +98,7 @@ export class MinuteDebugSession extends DebugSession {
       await swo.start()
     }
 
-    if (loadProgram) {
+    if (loadProgram && !this.server.skipLoad) {
       if (config.smartLoad
         && this.server.identity
         && await smartLoadSkip(config.cwd, config.program, this.server.identity)) {
