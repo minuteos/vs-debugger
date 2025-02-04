@@ -91,6 +91,19 @@ interface BreakpointOptions {
   qualified?: boolean /** function name is fully qualified */
 }
 
+interface PrintValuesOptions {
+  noValues?: boolean
+  allValues?: boolean
+  simpleValues?: boolean
+}
+
+interface StackListVariablesOptions extends PrintValuesOptions {
+  thread?: number
+  frame?: number
+  noFrameFilters?: boolean
+  skipUnavailable?: boolean
+}
+
 interface DisassemblyRangeTarget {
   s: number /** start */
   e: number /** end */
@@ -110,6 +123,13 @@ type DisassemblyTarget = DisassemblyRangeTarget | DisassemblyAddressTarget | Dis
 type DisassemblyOptions = DisassemblyTarget & {
   opcodes: 'none' | 'bytes' | 'display'
   source: boolean
+}
+
+interface SymbolInfoVariablesOptions {
+  includeNondebug?: boolean
+  type?: string /** regexp */
+  name?: string /** regexp */
+  maxResults?: number
 }
 
 export interface CommandEvents {
@@ -148,9 +168,12 @@ export interface MiCommands {
 
   // stack commands
   stackListFrames(lowFrame?: number, highFrame?: number, opts?: { noFrameFilters: boolean }): Promise<StackListFramesCommandResult>
+  stackListVariables(opts?: StackListVariablesOptions): Promise<StackListVariablesCommandResult>
 
   // variable commands
   varCreate(name: string, frameAddr: string, expression: string): Promise<VariableCreateCommandResult>
+  varDelete(name: string): Promise<MiCommandResult>
+  varListChildren(opts: PrintValuesOptions, name: string, from?: number, to?: number): Promise<VariableListChildrenCommandResult>
 
   // exec commands
   execContinue(opts?: ExecReverseOptions & ExecThreadGroupOptions): Promise<MiCommandResult>
@@ -171,6 +194,9 @@ export interface MiCommands {
   dataWriteMemoryBytes(addr: number, contents: string): Promise<DataReadResult>
   dataListRegisterNames(): Promise<RegisterNamesResult>
   dataListRegisterValues(opts: { skipUnavailable?: boolean }, format: ValueFormat): Promise<RegisterValuesResult>
+
+  // symbol commands
+  symbolInfoVariables(opts?: SymbolInfoVariablesOptions): Promise<SymbolInfoVariablesResult>
 
   // custom commands
   console(...command: string[]): Promise<MiCommandResult>
@@ -249,15 +275,33 @@ export interface StackListFramesCommandResult extends MiCommandResult {
   stack: FrameInfo[]
 }
 
-export interface VariableCreateCommandResult extends MiCommandResult {
-  name: string
-  numchild: number
-  value: string
-  type: string
+export interface StackListVariablesCommandResult extends MiCommandResult {
+  variables: {
+    name: string
+    type: string
+    value: string | number
+  }[]
+}
+
+export interface VariableCreateCommandResult extends MiCommandResult, VariableInfo {
   threadId?: number
   hasMore?: number
   dynamic?: number
   displayhint?: string
+}
+
+export interface VariableInfo {
+  name: string
+  numchild: number
+  value: string | number
+  type?: string
+}
+
+export interface VariableListChildrenCommandResult extends MiCommandResult {
+  numchildren: number
+  children: ({
+    exp: string | number
+  } & VariableInfo)[]
 }
 
 export interface DisassemblyInstruction {
@@ -298,4 +342,29 @@ export interface RegisterValuesResult extends MiCommandResult {
     number: number
     value: number | string
   }[]
+}
+
+export interface DebugFileInfo {
+  filename: string
+  fullname: string
+  symbols: DebugFileSymbolInfo[]
+}
+
+export interface DebugFileSymbolInfo {
+  line: number
+  name: string
+  type: string
+  description: string
+}
+
+interface NonDebugSymbolInfo {
+  address: string
+  name: string
+}
+
+export interface SymbolInfoVariablesResult extends MiCommandResult {
+  symbols: {
+    debug: DebugFileInfo[]
+    nondebug?: NonDebugSymbolInfo[]
+  }
 }

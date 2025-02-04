@@ -3,12 +3,12 @@ import { configureError, DebugError, ErrorCode, ErrorDestination, MiError } from
 import { createGdbServer } from '@my/gdb-server/factory'
 import { GdbServer } from '@my/gdb-server/gdb-server'
 import { GdbInstance } from '@my/gdb/instance'
-import { BreakpointInfo, BreakpointInsertCommandResult, FrameInfo, MiCommands, MiExecStatus, ValueFormat } from '@my/gdb/mi.commands'
+import { BreakpointInfo, BreakpointInsertCommandResult, DebugFileInfo as DebugFileInfo, DebugFileSymbolInfo, FrameInfo, MiCommands, MiExecStatus, ValueFormat, VariableInfo } from '@my/gdb/mi.commands'
 import { SwoSession } from '@my/gdb/swo'
 import { getLog, getTrace, progress, traceEnabled } from '@my/services'
 import { createSmu } from '@my/smu/factory'
 import { Smu } from '@my/smu/smu'
-import { findExecutable } from '@my/util'
+import { findExecutable, throwError } from '@my/util'
 import { ContinuedEvent, DebugSession, InitializedEvent, Response, Scope, StoppedEvent, Variable } from '@vscode/debugadapter'
 import { DebugProtocol } from '@vscode/debugprotocol'
 import * as vscode from 'vscode'
@@ -32,6 +32,59 @@ enum VariableScope {
   Registers,
 }
 
+interface GlobalVariable {
+  file: DebugFileInfo
+  sym: DebugFileSymbolInfo
+  variable: GdbVariable
+}
+
+class GdbVariable {
+  readonly displayName: string
+  readonly name: string
+  readonly type?: string
+  value = ''
+  expandable = false
+  presentationHint?: DebugProtocol.VariablePresentationHint
+
+  constructor(displayName: string | number, vi: VariableInfo, readonly ref: number) {
+    this.displayName = displayName.toString()
+    this.name = vi.name
+    this.type = vi.type
+    this.update(vi.value, vi.numchild)
+  }
+
+  update(value: string | number, numChildren: number) {
+    if (this.type && this.type.endsWith('*') && (value === 0 || (typeof value === 'string' && parseInt(value) === 0))) {
+      this.value = 'NULL'
+      this.expandable = false
+    } else {
+      this.value = value.toString()
+      this.expandable = !!numChildren
+    }
+  }
+
+  toVariable(): Variable {
+    const res = new Variable(
+      this.displayName,
+      this.value,
+      this.expandable ? this.ref : 0) as DebugProtocol.Variable
+
+    if (this.presentationHint) {
+      res.presentationHint = this.presentationHint
+    }
+    return res
+  }
+}
+
+function symbolReference(file: DebugFileInfo, sym: DebugFileSymbolInfo) {
+  let { name } = sym
+  if (/[:<>()]/.exec(name)) {
+    // quote name as well if it contains special characters
+    name = `'${name}'`
+  }
+  return `'${file.filename}'::${name}`
+}
+
 export class MinuteDebugSession extends DebugSession {
   private gdb?: GdbInstance
   private server?: GdbServer
@@ -40,6 +93,8 @@ export class MinuteDebugSession extends DebugSession {
   private disposableStack = new AsyncDisposableStack()
   private suppressExecEvents = true
   private lastExecEvent?: ContinuedEvent | StoppedEvent
+  private varMap = new Map<string | number, GdbVariable>()
+  private varNextRef = 1
 
   get command(): MiCommands {
     const gdb = this.gdb
@@ -61,6 +116,22 @@ export class MinuteDebugSession extends DebugSession {
     await this.disposableStack.disposeAsync()
   }
 
+  private getVar(nameOrRef: string | number): GdbVariable {
+    return this.varMap.get(nameOrRef) ?? throwError(new Error(`Unknown variable '${nameOrRef.toString()}'`))
+  }
+
+  private registerVar(displayName: string | number, vi: VariableInfo): GdbVariable {
+    const v = new GdbVariable(displayName, vi, this.varNextRef++)
+    this.varMap.set(v.name, v)
+    this.varMap.set(v.ref, v)
+    return v
+  }
+
+  private deleteVar(v: GdbVariable) {
+    this.varMap.delete(v.name)
+    this.varMap.delete(v.ref)
+  }
+
   // #region Command handlers
   /* eslint-disable @typescript-eslint/no-unused-vars */
 
@@ -69,6 +140,7 @@ export class MinuteDebugSession extends DebugSession {
       supportsSteppingGranularity: true,
       supportsDisassembleRequest: true,
       supportsInstructionBreakpoints: true,
+      supportsValueFormattingOptions: true,
     }
   }
 
@@ -155,8 +227,6 @@ export class MinuteDebugSession extends DebugSession {
     }
   }
 
-  private nextVar = 1
-
   async command_evaluate(response: DebugProtocol.EvaluateResponse, args: DebugProtocol.EvaluateArguments) {
     const addr = (args.frameId ? this.frameIdMap.get(args.frameId)?.addr : undefined) ?? '*'
 
@@ -184,12 +254,15 @@ export class MinuteDebugSession extends DebugSession {
       }
     } else {
       // evalaulte variable
-      const num = this.nextVar++
       try {
-        const res = await this.command.varCreate(`v${num.toString()}`, addr, args.expression)
-        response.body = {
-          result: String(res.value),
-          variablesReference: res.numchild ? num : 0,
+        const res = await this.command.varCreate('-', addr, args.expression)
+        if (res.numchild) {
+          response.body = {
+            result: String(res.value),
+            variablesReference: this.registerVar(args.expression, res).ref,
+          }
+        } else {
+          await this.command.varDelete(res.name)
         }
       } catch (error) {
         throw configureError(error, ErrorCode.EvaluationError, ErrorDestination.None)
@@ -208,16 +281,82 @@ export class MinuteDebugSession extends DebugSession {
   }
 
   private registerNames?: string[]
+  private debugSymbols?: DebugFileInfo[]
+  private globalVars?: GlobalVariable[]
+
+  private async getDebugSymbols() {
+    return this.debugSymbols ??= (await this.command.symbolInfoVariables()).symbols.debug
+  }
+
+  private async getGlobalVariables() {
+    return this.globalVars ??= await this.createGlobalVariables()
+  }
+
+  private async createGlobalVariables() {
+    const res: GlobalVariable[] = []
+
+    for (const file of await this.getDebugSymbols()) {
+      for (const sym of file.symbols) {
+        if (sym.description.startsWith('static ')) {
+          continue
+        }
+
+        try {
+          const variable = await this.command.varCreate('-', '0', symbolReference(file, sym))
+          res.push({ file, sym, variable: this.registerVar(sym.name, variable) })
+        } catch (error) {
+          log.warn('Failed to create global variable', error)
+        }
+      }
+    }
+
+    return res
+  }
 
   async command_variables(response: DebugProtocol.VariablesResponse, args: DebugProtocol.VariablesArguments) {
     let variables: Variable[] = []
 
     switch (args.variablesReference as VariableScope) {
+      case VariableScope.Local: {
+        const vars = await this.command.stackListVariables({ simpleValues: true })
+        variables = vars.variables.map(({ name, value }) => new Variable(name, value.toString()))
+        break
+      }
+
+      case VariableScope.Global: {
+        const globals = await this.getGlobalVariables()
+        variables = globals.map(g => g.variable.toVariable())
+        break
+      }
+
       case VariableScope.Registers: {
         // special case
         const registerNames = this.registerNames ??= (await this.command.dataListRegisterNames()).registerNames
-        const values = await this.command.dataListRegisterValues({ skipUnavailable: true }, ValueFormat.Natural)
+        const values = await this.command.dataListRegisterValues({ skipUnavailable: true },
+          args.format?.hex ? ValueFormat.Hexadecimal : ValueFormat.Natural)
         variables = values.registerValues.map(({ number, value }) => new Variable(registerNames[number], value.toString()))
+        break
+      }
+
+      default: {
+        const res = await this.command.varListChildren({
+          allValues: true,
+        }, this.getVar(args.variablesReference).name)
+
+        for (const v of res.children) {
+          const gv = this.registerVar(String(v.exp), v)
+          if (v.type === undefined && typeof v.exp === 'string' && ['public', 'protected', 'private', 'internal'].includes(v.exp)) {
+            // turn access modifiers into presentation hints
+            const ph: DebugProtocol.VariablePresentationHint = { visibility: v.exp !== 'public' ? 'internal' : v.exp }
+            for (const vv of (await this.command.varListChildren({ allValues: true }, v.name)).children) {
+              const gvv = this.registerVar(String(vv.exp), vv)
+              gvv.presentationHint = ph
+              variables.push(gvv.toVariable())
+            }
+          } else {
+            variables.push(gv.toVariable())
+          }
+        }
         break
       }
     }
