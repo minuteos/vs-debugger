@@ -97,9 +97,12 @@ interface PrintValuesOptions {
   simpleValues?: boolean
 }
 
-interface StackListVariablesOptions extends PrintValuesOptions {
+interface ThreadFrameOptions {
   thread?: number
   frame?: number
+}
+
+interface StackListVariablesOptions extends ThreadFrameOptions, PrintValuesOptions {
   noFrameFilters?: boolean
   skipUnavailable?: boolean
 }
@@ -171,7 +174,7 @@ export interface MiCommands {
   stackListVariables(opts?: StackListVariablesOptions): Promise<StackListVariablesCommandResult>
 
   // variable commands
-  varCreate(name: string, frameAddr: string, expression: string): Promise<VariableCreateCommandResult>
+  varCreate(opts: ThreadFrameOptions, name: string, frameAddr: string, expression: string): Promise<VariableCreateCommandResult>
   varDelete(name: string): Promise<MiCommandResult>
   varListChildren(opts: PrintValuesOptions, name: string, from?: number, to?: number): Promise<VariableListChildrenCommandResult>
 

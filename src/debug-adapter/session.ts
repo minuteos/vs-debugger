@@ -27,9 +27,10 @@ const trace = getTrace('DAP')
  * Fake variable reference numbers for the scopes
  */
 enum VariableScope {
-  Local = 4000000000,
+  Registers = 4000000000,
   Global,
-  Registers,
+  LocalStart,
+  LocalEnd = 4100000000,
 }
 
 interface GlobalVariable {
@@ -120,10 +121,12 @@ export class MinuteDebugSession extends DebugSession {
     return this.varMap.get(nameOrRef) ?? throwError(new Error(`Unknown variable '${nameOrRef.toString()}'`))
   }
 
-  private registerVar(displayName: string | number, vi: VariableInfo): GdbVariable {
-    const v = new GdbVariable(displayName, vi, this.varNextRef++)
-    this.varMap.set(v.name, v)
-    this.varMap.set(v.ref, v)
+  private createOrRegisterVar(displayName: string | number, vi: VariableInfo, createOnly = false): GdbVariable {
+    const v = new GdbVariable(displayName, vi, createOnly ? 0 : this.varNextRef++)
+    if (v.ref) {
+      this.varMap.set(v.name, v)
+      this.varMap.set(v.ref, v)
+    }
     return v
   }
 
@@ -255,14 +258,15 @@ export class MinuteDebugSession extends DebugSession {
     } else {
       // evalaulte variable
       try {
-        const res = await this.command.varCreate('-', addr, args.expression)
-        if (res.numchild) {
-          response.body = {
-            result: String(res.value),
-            variablesReference: this.registerVar(args.expression, res).ref,
-          }
-        } else {
+        const res = await this.command.varCreate({}, '-', addr, args.expression)
+        const gvar = this.createOrRegisterVar(args.expression, res, !res.numchild)
+        if (!gvar.ref) {
           await this.command.varDelete(res.name)
+        }
+        const rvar = gvar.toVariable()
+        response.body = {
+          result: rvar.value,
+          variablesReference: rvar.variablesReference,
         }
       } catch (error) {
         throw configureError(error, ErrorCode.EvaluationError, ErrorDestination.None)
@@ -273,7 +277,7 @@ export class MinuteDebugSession extends DebugSession {
   command_scopes(response: DebugProtocol.ScopesResponse, args: DebugProtocol.ScopesArguments) {
     response.body = {
       scopes: [
-        new Scope('Local', VariableScope.Local, false),
+        new Scope('Local', VariableScope.LocalStart + args.frameId, false),
         new Scope('Global', VariableScope.Global, true),
         new Scope('Registers', VariableScope.Registers, true),
       ],
@@ -302,8 +306,8 @@ export class MinuteDebugSession extends DebugSession {
         }
 
         try {
-          const variable = await this.command.varCreate('-', '0', symbolReference(file, sym))
-          res.push({ file, sym, variable: this.registerVar(sym.name, variable) })
+          const variable = await this.command.varCreate({}, '-', '0', symbolReference(file, sym))
+          res.push({ file, sym, variable: this.createOrRegisterVar(sym.name, variable) })
         } catch (error) {
           log.warn('Failed to create global variable', error)
         }
@@ -313,51 +317,61 @@ export class MinuteDebugSession extends DebugSession {
     return res
   }
 
+  private async getLocalVariables(frame: number) {
+    const res: GdbVariable[] = []
+
+    const addr = this.frameIdMap.get(frame)?.addr
+    if (!addr) {
+      return res
+    }
+
+    const vars = await this.command.stackListVariables({ thread: 1, frame, noValues: true })
+    for (const { name } of vars.variables) {
+      try {
+        const variable = await this.command.varCreate({ thread: 1, frame }, '-', '*', name)
+        res.push(this.createOrRegisterVar(name, variable))
+      } catch (error) {
+        log.warn('Failed to create local variable', name, error)
+      }
+    }
+
+    return res
+  }
+
   async command_variables(response: DebugProtocol.VariablesResponse, args: DebugProtocol.VariablesArguments) {
     let variables: Variable[] = []
+    const ref = args.variablesReference as VariableScope
+    if (ref === VariableScope.Global) {
+      const globals = await this.getGlobalVariables()
+      variables = globals.map(g => g.variable.toVariable())
+    } else if (ref === VariableScope.Registers) {
+      // special case
+      const registerNames = this.registerNames ??= (await this.command.dataListRegisterNames()).registerNames
+      const values = await this.command.dataListRegisterValues({ skipUnavailable: true },
+        args.format?.hex ? ValueFormat.Hexadecimal : ValueFormat.Natural)
+      variables = values.registerValues.map(({ number, value }) => new Variable(registerNames[number], value.toString()))
+    } else if (ref >= VariableScope.LocalStart) {
+      const frame = ref - VariableScope.LocalStart
+      const locals = await this.getLocalVariables(frame)
+      variables = locals.map(l => l.toVariable())
+    } else {
+      const res = await this.command.varListChildren({
+        allValues: true,
+      }, this.getVar(args.variablesReference).name)
 
-    switch (args.variablesReference as VariableScope) {
-      case VariableScope.Local: {
-        const vars = await this.command.stackListVariables({ simpleValues: true })
-        variables = vars.variables.map(({ name, value }) => new Variable(name, value.toString()))
-        break
-      }
-
-      case VariableScope.Global: {
-        const globals = await this.getGlobalVariables()
-        variables = globals.map(g => g.variable.toVariable())
-        break
-      }
-
-      case VariableScope.Registers: {
-        // special case
-        const registerNames = this.registerNames ??= (await this.command.dataListRegisterNames()).registerNames
-        const values = await this.command.dataListRegisterValues({ skipUnavailable: true },
-          args.format?.hex ? ValueFormat.Hexadecimal : ValueFormat.Natural)
-        variables = values.registerValues.map(({ number, value }) => new Variable(registerNames[number], value.toString()))
-        break
-      }
-
-      default: {
-        const res = await this.command.varListChildren({
-          allValues: true,
-        }, this.getVar(args.variablesReference).name)
-
-        for (const v of res.children) {
-          const gv = this.registerVar(String(v.exp), v)
-          if (v.type === undefined && typeof v.exp === 'string' && ['public', 'protected', 'private', 'internal'].includes(v.exp)) {
-            // turn access modifiers into presentation hints
-            const ph: DebugProtocol.VariablePresentationHint = { visibility: v.exp !== 'public' ? 'internal' : v.exp }
-            for (const vv of (await this.command.varListChildren({ allValues: true }, v.name)).children) {
-              const gvv = this.registerVar(String(vv.exp), vv)
-              gvv.presentationHint = ph
-              variables.push(gvv.toVariable())
-            }
-          } else {
-            variables.push(gv.toVariable())
+      for (const v of res.children) {
+        const gv = this.createOrRegisterVar(String(v.exp), v)
+        if (v.type === undefined && typeof v.exp === 'string' && ['public', 'protected', 'private', 'internal'].includes(v.exp)) {
+          // turn access modifiers into presentation hints
+          const ph: DebugProtocol.VariablePresentationHint = { visibility: v.exp !== 'public' ? 'internal' : v.exp }
+          for (const vv of (await this.command.varListChildren({ allValues: true }, v.name)).children) {
+            const gvv = this.createOrRegisterVar(String(vv.exp), vv)
+            gvv.presentationHint = ph
+            variables.push(gvv.toVariable())
           }
+        } else {
+          variables.push(gv.toVariable())
         }
-        break
       }
     }
     response.body = {
