@@ -206,7 +206,10 @@ export class GdbMi extends DisposableContainer {
           continue
         }
 
-        const res = JSON.parse(line.substring(0, e)) as string
+        let str = line.substring(0, e)
+        // replace octal escapes with \unnnn
+        str = str.replaceAll(/\\[0-7]{1,3}/g, s => `\\u${parseInt(s.slice(1), 8).toString(16).padStart(4, '0')}`)
+        const res = JSON.parse(str) as string
         line = line.substring(e)
         return res
       }
