@@ -1,6 +1,7 @@
 import { LaunchConfiguration } from '@my/configuration'
 import { ChildProcess, getLog, getRawLog } from '@my/services'
 import { DisposableContainer, pick } from '@my/util'
+import { BehaviorSubject, lastValueFrom, takeWhile, timeout } from 'rxjs'
 
 import { GdbMi } from './mi'
 import { MiCommands, MiExecStatus } from './mi.commands'
@@ -12,12 +13,19 @@ const rawLog = getRawLog('GDB')
 export class GdbInstance extends DisposableContainer {
   private gdb?: ChildProcess
   private _mi!: GdbMi
+  private _threads = new BehaviorSubject<MiExecStatus[]>([])
 
-  constructor(readonly config: LaunchConfiguration, readonly onExec: (evt: MiExecStatus) => void) {
+  constructor(readonly config: LaunchConfiguration) {
     super()
   }
 
+  get threads$() { return this._threads.asObservable() }
+  get threads() { return this._threads.value }
+
   async start(executable: string) {
+    this._threads.subscribe((t) => {
+      log.trace('threads', t)
+    })
     log.info('Starting', executable)
 
     this.defer(() => {
@@ -32,6 +40,11 @@ export class GdbInstance extends DisposableContainer {
     gdb.forwardLines(gdb.stderr, (line) => {
       log.error(line)
     })
+
+    this.gdb.process.once('exit', () => {
+      this._threads.complete()
+    })
+
     const mi = this.use(new GdbMi(gdb.stdout, gdb.stdin, {
       stream: (type, text) => {
         if (type === MiStreamType.Console) {
@@ -39,9 +52,29 @@ export class GdbInstance extends DisposableContainer {
         }
       },
       notify: (evt) => {
-        void evt
+        switch (evt.$class) {
+          case 'thread-created': {
+            this._threads.next([...this.threads, {
+              $class: 'stopped',
+              threadId: evt.id,
+              reason: 'new',
+            }])
+            break
+          }
+
+          case 'thread-exited': {
+            this._threads.next(this.threads.filter(t => t.threadId !== evt.id))
+            break
+          }
+        }
       },
-      exec: this.onExec,
+      exec: (evt) => {
+        this._threads.next(this.threads.map(t =>
+          (typeof evt.threadId === 'string' && evt.threadId === 'all') || evt.threadId === t.threadId
+            ? { ...evt, threadId: t.threadId }
+            : t,
+        ))
+      },
     }))
     this._mi = mi
 
@@ -66,5 +99,22 @@ export class GdbInstance extends DisposableContainer {
 
   get command(): MiCommands {
     return this._mi.command
+  }
+
+  threadsStopped(timeoutMs = 5000) {
+    return this.threadsInState(s => !s.find(t => t.$class !== 'stopped'), timeoutMs)
+  }
+
+  threadsNotStopped(timeoutMs = 5000) {
+    return this.threadsInState(s => !!s.find(t => t.$class !== 'stopped'), timeoutMs)
+  }
+
+  private threadsInState(predicate: (state: MiExecStatus[]) => boolean, timeoutMs: number) {
+    return lastValueFrom(
+      this.threads$.pipe(
+        takeWhile(s => !predicate(s)),
+        timeout(timeoutMs),
+      ),
+      { defaultValue: undefined })
   }
 }

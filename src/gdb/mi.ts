@@ -342,9 +342,9 @@ export class GdbMi extends DisposableContainer {
 
           case '=':
             if (cmd) {
-              (cmd.notify ??= []).push(res)
+              (cmd.notify ??= []).push(res as unknown as MiNotify)
             }
-            this.callbacks?.notify?.(res)
+            this.callbacks?.notify?.(res as unknown as MiNotify)
             break
         }
         return

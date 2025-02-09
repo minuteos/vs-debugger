@@ -4,7 +4,24 @@ export interface MiResult {
   [key: string]: unknown
 }
 
-export type MiNotify = MiResult
+export interface MiThreadNotify extends MiResult {
+  id: number
+  groupId: string
+}
+
+export interface MiThreadCreateNotify extends MiThreadNotify {
+  $class: 'thread-created'
+}
+
+export interface MiThreadExitedNotify extends MiThreadNotify {
+  $class: 'thread-exited'
+}
+
+export interface MiOtherNotify extends MiResult {
+  $class: ''
+}
+
+export type MiNotify = MiThreadNotify | MiThreadExitedNotify | MiOtherNotify
 
 export interface DownloadStatus {
   $class: 'download'
@@ -20,7 +37,7 @@ export type MiStatus = DownloadStatus
 // #region Exec status events
 export interface RunningExecStatus extends MiResult {
   $class: 'running'
-  threadId: number | 'all'
+  threadId: number
 }
 
 export type StoppedReason = 'breakpoint-hit'
@@ -35,12 +52,13 @@ export type StoppedReason = 'breakpoint-hit'
   | 'exited'
   | 'exited-normally'
   | 'signal-received'
+  | 'new'
 
 export interface StoppedExecStatus extends MiResult {
   $class: 'stopped'
   reason: StoppedReason
   threadId: number
-  stoppedThreads: string
+  stoppedThreads?: string
 }
 
 export type MiExecStatus = RunningExecStatus | StoppedExecStatus

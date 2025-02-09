@@ -9,9 +9,10 @@ import { SwoSession } from '@my/gdb/swo'
 import { getLog, getTrace, progress, traceEnabled } from '@my/services'
 import { createSmu } from '@my/smu/factory'
 import { Smu } from '@my/smu/smu'
-import { findExecutable, throwError } from '@my/util'
-import { ContinuedEvent, DebugSession, InitializedEvent, Response, Scope, StoppedEvent, Variable } from '@vscode/debugadapter'
+import { delay, findExecutable, throwError } from '@my/util'
+import { ContinuedEvent, DebugSession, InitializedEvent, Response, Scope, StoppedEvent, ThreadEvent, Variable } from '@vscode/debugadapter'
 import { DebugProtocol } from '@vscode/debugprotocol'
+import { BehaviorSubject, lastValueFrom, takeWhile } from 'rxjs'
 import * as vscode from 'vscode'
 
 import { DisassemblyCache } from './disassembly'
@@ -23,6 +24,8 @@ type DebugHandlers = Record<string, DebugHandler>
 
 const log = getLog('DebugSession')
 const trace = getTrace('DAP')
+
+const IDLE_TIMEOUT = 100
 
 /**
  * Fake variable reference numbers for the scopes
@@ -88,26 +91,29 @@ function symbolReference(file: DebugFileInfo, sym: DebugFileSymbolInfo) {
 }
 
 export class MinuteDebugSession extends DebugSession {
-  private gdb?: GdbInstance
+  private _gdb?: GdbInstance
   private server?: GdbServer
   private smu?: Smu
   private disassemblyCache?: DisassemblyCache
   private disposableStack = new AsyncDisposableStack()
-  private suppressExecEvents = true
-  private lastExecEvent?: ContinuedEvent | StoppedEvent
   private varMap = new Map<string | number, GdbVariable>()
   private varNextRef = 1
   private cortex?: Cortex
+  private dapActive$ = new BehaviorSubject(0)
 
-  get command(): MiCommands {
-    const gdb = this.gdb
+  get gdb(): GdbInstance {
+    const gdb = this._gdb
     if (!gdb) {
       throw new Error('GDB not started')
     }
     if (!gdb.running) {
       throw new Error('GDB lost')
     }
-    return gdb.command
+    return gdb
+  }
+
+  get command(): MiCommands {
+    return this.gdb.command
   }
 
   async dispose() {
@@ -162,13 +168,11 @@ export class MinuteDebugSession extends DebugSession {
   }
 
   private async launchOrAttach(config: LaunchConfiguration, loadProgram: boolean) {
-    this.gdb = this.disposableStack.use(new GdbInstance(config, (exec) => {
-      this.execStatusChange(exec)
-    }))
+    this._gdb = this.disposableStack.use(new GdbInstance(config))
     this.server = this.disposableStack.use(createGdbServer(config))
     this.smu = this.disposableStack.use(createSmu(config))
     await Promise.all([
-      this.gdb.start(await findExecutable('arm-none-eabi-gdb')),
+      this._gdb.start(await findExecutable('arm-none-eabi-gdb')),
       this.server.start(),
       this.smu?.connect(),
     ])
@@ -179,6 +183,7 @@ export class MinuteDebugSession extends DebugSession {
     await this.command.targetSelect('extended-remote', this.server.address)
 
     await this.server.attach(this.command)
+    await this.gdb.threadsStopped()
 
     if (this.server.swoStream) {
       const swo = this.disposableStack.use(new SwoSession(this.cortex, this.server.swoStream, (swo) => {
@@ -201,14 +206,34 @@ export class MinuteDebugSession extends DebugSession {
           })
         })
       }
+
+      // starti (executed via console) is tricky, because the running event comes only after
+      // the command returns, so the 'threadsStopped' gate below is skipped immediately
+      const startStopPromise = (async () => {
+        await this.gdb.threadsNotStopped()
+        await this.gdb.threadsStopped()
+      })()
       await this.command.console('starti')
+      log.debug('starti complete')
+      await startStopPromise
+      log.debug('stopped after starti')
     }
 
+    await this.gdb.threadsStopped()
+
     this.sendEvent(new InitializedEvent())
-    this.suppressExecEvents = false
-    if (this.lastExecEvent) {
-      this.sendEvent(this.lastExecEvent)
+
+    // keep the target stopped until the initial barrage of requests ends
+    await this.idle(1)
+
+    if (!config.stopAtConnect) {
+      await this.command.execContinue({ all: true })
+      await this.gdb.threadsNotStopped()
     }
+
+    this.gdb.threads$.subscribe(() => {
+      this.sendExecEvents()
+    })
   }
 
   async command_disconnect(response: DebugProtocol.DisconnectResponse, args: DebugProtocol.DisconnectArguments) {
@@ -216,10 +241,12 @@ export class MinuteDebugSession extends DebugSession {
   }
 
   async command_threads(response: DebugProtocol.ThreadsResponse) {
-    const res = await this.command.threadInfo()
-    response.body = {
-      threads: res.threads.map(mi.mapThreadInfo),
-    }
+    await this.execWhileStopped(async () => {
+      const res = await this.command.threadInfo()
+      response.body = {
+        threads: res.threads.map(mi.mapThreadInfo),
+      }
+    })
   }
 
   frameIdMap = new Map<number, FrameInfo>()
@@ -251,7 +278,7 @@ export class MinuteDebugSession extends DebugSession {
       } catch (error) {
         throw configureError(error, ErrorCode.ConsoleEvaluationError, ErrorDestination.None)
       }
-    } else if (args.context === 'repl' && (/^-[a-z]/.exec(args.expression)) && this.gdb) {
+    } else if (args.context === 'repl' && (/^-[a-z]/.exec(args.expression))) {
       // execute raw MI command
       try {
         const res = await this.gdb.mi.execute(args.expression.substring(1))
@@ -422,17 +449,19 @@ export class MinuteDebugSession extends DebugSession {
       breakpoints: [],
     }
 
-    const { breakpoints = [], source: { path = '<unknown>' } } = args
-    const current = this.breakpointMap.get(path) ?? []
-    this.breakpointMap.set(path, current)
+    await this.execWhileStopped(async () => {
+      const { breakpoints = [], source: { path = '<unknown>' } } = args
+      const current = this.breakpointMap.get(path) ?? []
+      this.breakpointMap.set(path, current)
 
-    await this.setBreakpoints(
-      response.body.breakpoints,
-      breakpoints,
-      current,
-      (s, b) => s.line === b.line,
-      s => this.command.breakInsert(undefined, { source: path, line: s.line }),
-    )
+      await this.setBreakpoints(
+        response.body.breakpoints,
+        breakpoints,
+        current,
+        (s, b) => s.line === b.line,
+        s => this.command.breakInsert(undefined, { source: path, line: s.line }),
+      )
+    })
   }
 
   async command_setInstructionBreakpoints(response: DebugProtocol.SetInstructionBreakpointsResponse, args: DebugProtocol.SetInstructionBreakpointsArguments) {
@@ -440,25 +469,27 @@ export class MinuteDebugSession extends DebugSession {
       breakpoints: [],
     }
 
-    const { breakpoints = [] } = args
+    await this.execWhileStopped(async () => {
+      const { breakpoints = [] } = args
 
-    function getLocation(s: DebugProtocol.InstructionBreakpoint) {
-      if (!s.offset) {
-        return `*${s.instructionReference}`
-      } else if (s.offset > 0) {
-        return `*(${s.instructionReference}+${s.offset.toString()})`
-      } else {
-        return `*(${s.instructionReference}${s.offset.toString()})`
+      function getLocation(s: DebugProtocol.InstructionBreakpoint) {
+        if (!s.offset) {
+          return `*${s.instructionReference}`
+        } else if (s.offset > 0) {
+          return `*(${s.instructionReference}+${s.offset.toString()})`
+        } else {
+          return `*(${s.instructionReference}${s.offset.toString()})`
+        }
       }
-    }
 
-    await this.setBreakpoints(
-      response.body.breakpoints,
-      breakpoints,
-      this.instructionBreakpoints,
-      (s, b) => getLocation(s) === b.originalLocation,
-      s => this.command.breakInsert(getLocation(s)),
-    )
+      await this.setBreakpoints(
+        response.body.breakpoints,
+        breakpoints,
+        this.instructionBreakpoints,
+        (s, b) => getLocation(s) === b.originalLocation,
+        s => this.command.breakInsert(getLocation(s)),
+      )
+    })
   }
 
   private async setBreakpoints<TSourceBreakpoint>(
@@ -515,15 +546,19 @@ export class MinuteDebugSession extends DebugSession {
   }
 
   async command_setExceptionBreakpoints(response: DebugProtocol.SetExceptionBreakpointsResponse, args: DebugProtocol.SetExceptionBreakpointsArguments) {
-    if (!this.cortex) {
+    const { cortex } = this
+    if (!cortex) {
       throw new DebugError('Exception breakpoints not supported on this target', undefined, undefined, ErrorCode.NotSupported)
     }
-    const mask = args.filters.reduce((a, s) => a | parseInt(s), 0)
-    await this.cortex.setExceptionMask(mask)
-    // no support yet
-    response.body = {
-      breakpoints: [],
-    }
+
+    await this.execWhileStopped(async () => {
+      const mask = args.filters.reduce((a, s) => a | parseInt(s), 0)
+      await cortex.setExceptionMask(mask)
+      // no support yet
+      response.body = {
+        breakpoints: [],
+      }
+    })
   }
 
   async command_disassemble(response: DebugProtocol.DisassembleResponse, args: DebugProtocol.DisassembleArguments) {
@@ -544,22 +579,74 @@ export class MinuteDebugSession extends DebugSession {
 
   // #region Execution status changes
 
-  private execStatusChange(evt: MiExecStatus) {
-    switch (evt.$class) {
-      case 'running':
-        if (evt.threadId === 'all') {
-          this.lastExecEvent = new ContinuedEvent(0, true)
-        } else {
-          this.lastExecEvent = new ContinuedEvent(evt.threadId)
-        }
-        break
-      case 'stopped':
-        this.lastExecEvent = new StoppedEvent(evt.reason, evt.threadId)
-        break
+  private readonly vsThreads = new Map<number, MiExecStatus>()
+  private interrupted = 0
+  private suppressExecEvents = 0
+
+  private sendExecEvents() {
+    if (this.suppressExecEvents) {
+      return
     }
 
-    if (!this.suppressExecEvents) {
-      this.sendEvent(this.lastExecEvent)
+    const seen = new Set<number>()
+
+    // find differing threads, count states, etc.
+    for (const evt of this.gdb.threads) {
+      const id = evt.threadId
+      seen.add(id)
+      const vst = this.vsThreads.get(id)
+      if (vst === undefined) {
+        this.sendEvent(new ThreadEvent('started', id))
+      }
+      if (vst?.$class !== evt.$class) {
+        if (evt.$class === 'stopped') {
+          this.sendEvent(new StoppedEvent(evt.reason, id))
+        } else {
+          this.sendEvent(new ContinuedEvent(id))
+        }
+        this.vsThreads.set(id, evt)
+      }
+    }
+
+    for (const [id] of this.vsThreads) {
+      if (!seen.has(id)) {
+        this.sendEvent(new ThreadEvent('exited', id))
+        this.vsThreads.delete(id)
+      }
+    }
+  }
+
+  private async execWhileStopped<T>(callback: () => Promise<T>): Promise<T> {
+    if (!this.gdb.threads.find(t => t.$class !== 'stopped')) {
+      // no threads running, call the callback directly
+      return callback()
+    }
+
+    const sendInterrupt = this.interrupted++ === 0
+    this.suppressExecEvents++
+    let decremented = false
+    try {
+      if (sendInterrupt) {
+        await this.command.execInterrupt({ all: true })
+      }
+      await this.gdb.threadsStopped()
+
+      try {
+        return await callback()
+      } finally {
+        decremented = true
+        const sendContinue = --this.interrupted === 0
+        if (sendContinue) {
+          await this.command.execContinue({ all: true })
+        }
+        await this.gdb.threadsNotStopped()
+      }
+    } finally {
+      if (!decremented) {
+        this.interrupted--
+      }
+      this.suppressExecEvents--
+      this.sendExecEvents()
     }
   }
   // #endregion
@@ -568,6 +655,7 @@ export class MinuteDebugSession extends DebugSession {
 
   protected dispatchRequest(request: DebugProtocol.Request): void {
     trace('<=', request.seq, request.command, request.arguments)
+    this.dapActive$.next(this.dapActive$.value + 1)
 
     const handler = async () => {
       const response = await this.handleRequest(request)
@@ -606,7 +694,22 @@ export class MinuteDebugSession extends DebugSession {
         }
       }
       super.sendErrorResponse(resp, code, format, variables, destination)
+    }).finally(() => {
+      // decrement the active counter a short while after the command completes
+      // whenever the counter reaches zero, we are really idle
+      setTimeout(() => {
+        this.dapActive$.next(this.dapActive$.value - 1)
+      }, IDLE_TIMEOUT)
     })
+  }
+
+  private async idle(numActive = 0) {
+    // wait for potential new requests to arrive
+    await delay(IDLE_TIMEOUT)
+    // now wait until everything is quiet
+    await lastValueFrom(this.dapActive$.pipe(
+      takeWhile(n => n > numActive),
+    ), { defaultValue: numActive })
   }
 
   sendResponse(response: DebugProtocol.Response): void {

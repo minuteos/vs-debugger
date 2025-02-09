@@ -54,6 +54,7 @@ export interface LaunchConfiguration {
   env?: Record<string, string>
   program: string
   smartLoad?: boolean
+  stopAtConnect?: boolean
 }
 
 function lookup<T extends { type: string } | undefined>(table: Record<string, T>, cfg?: string | T): T | undefined {
