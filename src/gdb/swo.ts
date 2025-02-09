@@ -3,7 +3,6 @@ import { DisposableContainer } from '@my/util'
 import { Readable } from 'stream'
 
 import { Cortex, SwvFormat } from './cortex'
-import { MiCommands } from './mi.commands'
 
 const log = getLog('SWO')
 const trace = getTrace('SWO')
@@ -16,7 +15,7 @@ export interface SwoSourcePacket {
 
 export class SwoSession extends DisposableContainer {
   constructor(
-    private readonly mi: MiCommands,
+    private readonly cortex: Cortex,
     private readonly swo: Readable,
     private readonly sourcePacket?: (evt: SwoSourcePacket) => void,
   ) {
@@ -27,9 +26,7 @@ export class SwoSession extends DisposableContainer {
 
   async start() {
     // configure trace bits on target
-    const cortex = new Cortex(this.mi)
-
-    await cortex.setupTrace({
+    await this.cortex.setupTrace({
       cpuFrequency: 72, swvFrequency: 2,
       format: SwvFormat.Manchester,
     })

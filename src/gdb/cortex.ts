@@ -185,4 +185,10 @@ export class Cortex {
     // enable all ITM stimuli
     await this.write32(p.itm + ITM_TER, ~0 >>> 0)
   }
+
+  async setExceptionMask(mask: number) {
+    const p = await this.detectPeripherals()
+
+    await this.modify32(p.scs + SCS_DEMCR, n => (n & ~0xFFFF) | mask)
+  }
 }

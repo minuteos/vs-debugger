@@ -9,6 +9,7 @@ export enum ErrorCode {
   BmpScanError = 200,
 
   Internal = 900,
+  NotSupported = 901,
   Unknown = 999,
 }
 

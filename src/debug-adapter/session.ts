@@ -2,6 +2,7 @@ import { expandConfiguration, InputLaunchConfiguration, LaunchConfiguration } fr
 import { configureError, DebugError, ErrorCode, ErrorDestination, MiError } from '@my/errors'
 import { createGdbServer } from '@my/gdb-server/factory'
 import { GdbServer } from '@my/gdb-server/gdb-server'
+import { Cortex } from '@my/gdb/cortex'
 import { GdbInstance } from '@my/gdb/instance'
 import { BreakpointInfo, BreakpointInsertCommandResult, DebugFileInfo as DebugFileInfo, DebugFileSymbolInfo, FrameInfo, MiCommands, MiExecStatus, ValueFormat, VariableInfo } from '@my/gdb/mi.commands'
 import { SwoSession } from '@my/gdb/swo'
@@ -96,6 +97,7 @@ export class MinuteDebugSession extends DebugSession {
   private lastExecEvent?: ContinuedEvent | StoppedEvent
   private varMap = new Map<string | number, GdbVariable>()
   private varNextRef = 1
+  private cortex?: Cortex
 
   get command(): MiCommands {
     const gdb = this.gdb
@@ -144,6 +146,10 @@ export class MinuteDebugSession extends DebugSession {
       supportsDisassembleRequest: true,
       supportsInstructionBreakpoints: true,
       supportsValueFormattingOptions: true,
+      exceptionBreakpointFilters: [
+        { filter: '0x7F0', label: 'Fault (Hard/Usage/Bus/Memory)', default: true },
+        { filter: '0x1', label: 'Core Reset', default: true },
+      ],
     }
   }
 
@@ -167,6 +173,7 @@ export class MinuteDebugSession extends DebugSession {
       this.smu?.connect(),
     ])
 
+    this.cortex = new Cortex(this.command)
     await this.command.gdbSet('mi-async', 1)
     await this.command.gdbSet('mem', 'inaccessible-by-default', 0)
     await this.command.targetSelect('extended-remote', this.server.address)
@@ -174,7 +181,7 @@ export class MinuteDebugSession extends DebugSession {
     await this.server.attach(this.command)
 
     if (this.server.swoStream) {
-      const swo = this.disposableStack.use(new SwoSession(this.command, this.server.swoStream, (swo) => {
+      const swo = this.disposableStack.use(new SwoSession(this.cortex, this.server.swoStream, (swo) => {
         if (!swo.dwt && swo.ch === 0) {
           vscode.debug.activeDebugConsole.append(swo.data.toString())
         }
@@ -507,7 +514,12 @@ export class MinuteDebugSession extends DebugSession {
     }
   }
 
-  command_setExceptionBreakpoints(response: DebugProtocol.SetExceptionBreakpointsResponse, args: DebugProtocol.SetExceptionBreakpointsArguments) {
+  async command_setExceptionBreakpoints(response: DebugProtocol.SetExceptionBreakpointsResponse, args: DebugProtocol.SetExceptionBreakpointsArguments) {
+    if (!this.cortex) {
+      throw new DebugError('Exception breakpoints not supported on this target', undefined, undefined, ErrorCode.NotSupported)
+    }
+    const mask = args.filters.reduce((a, s) => a | parseInt(s), 0)
+    await this.cortex.setExceptionMask(mask)
     // no support yet
     response.body = {
       breakpoints: [],
