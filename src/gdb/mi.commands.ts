@@ -59,6 +59,8 @@ export interface StoppedExecStatus extends MiResult {
   reason: StoppedReason
   threadId: number
   stoppedThreads?: string
+  signalName?: string
+  signalMeaning?: string
 }
 
 export type MiExecStatus = RunningExecStatus | StoppedExecStatus

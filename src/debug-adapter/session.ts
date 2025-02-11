@@ -607,7 +607,7 @@ export class MinuteDebugSession extends DebugSession {
       }
       if (vst?.$class !== evt.$class) {
         if (evt.$class === 'stopped') {
-          this.sendEvent(new StoppedEvent(evt.reason, id))
+          this.sendEvent(new StoppedEvent(evt.signalMeaning ?? evt.signalName ?? evt.reason, id))
         } else {
           this.sendEvent(new ContinuedEvent(id))
         }
