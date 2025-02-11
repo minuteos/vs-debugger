@@ -1,3 +1,4 @@
+import { SwvFormat } from '@my/gdb/cortex'
 import { DeviceMatch } from '@my/services/match.common'
 import { PortMatch } from '@my/services/serial'
 import { UsbInterfaceMatch } from '@my/services/usb'
@@ -18,7 +19,6 @@ export interface QemuServerConfiguration {
 export interface BmpServerConfiguration extends DeviceMatch {
   type: 'bmp'
   port?: string
-  swoPort: UsbInterfaceMatch
 }
 
 export type ServerConfiguration = QemuServerConfiguration | BmpServerConfiguration
@@ -38,9 +38,23 @@ export interface StlinkSmuConfiguration extends PortMatch {
 
 export type SmuConfiguration = StlinkSmuConfiguration
 
+export interface CommonSwoConfiguration {
+  cpuFrequency: number
+  swvFrequency: number
+  format: SwvFormat
+}
+
+export interface BmpSwoConfiguration extends DeviceMatch, CommonSwoConfiguration {
+  type: 'bmp'
+  port: UsbInterfaceMatch
+}
+
+export type SwoConfiguration = BmpSwoConfiguration
+
 export interface InputLaunchConfiguration {
   server?: string | ServerConfiguration
   smu?: string | SmuConfiguration
+  swo?: string | SwoConfiguration
   cwd?: string
   env?: Record<string, string>
   program: string
@@ -50,6 +64,7 @@ export interface InputLaunchConfiguration {
 export interface LaunchConfiguration {
   server: ServerConfiguration
   smu?: SmuConfiguration
+  swo?: SwoConfiguration
   cwd?: string
   env?: Record<string, string>
   program: string
@@ -74,11 +89,12 @@ function lookup<T extends { type: string } | undefined>(table: Record<string, T>
 }
 
 export function expandConfiguration(config: InputLaunchConfiguration): LaunchConfiguration {
-  const { server, smu, ...other } = mergeDefaults(config, settings.defaults.launch)
+  const { server, smu, swo, ...other } = mergeDefaults(config, settings.defaults.launch)
   return {
     ...other,
     server: lookup(settings.server, server)
       ?? throwError(new Error('server must be specified in launch configuration or in minute-debug.defaults.launch')),
     smu: lookup(settings.smu, smu),
+    swo: lookup(settings.swo, swo),
   }
 }

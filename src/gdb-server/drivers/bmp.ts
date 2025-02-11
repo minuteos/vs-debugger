@@ -3,9 +3,7 @@ import { DebugError, ErrorCode } from '@my/errors'
 import { MiCommands } from '@my/gdb/mi.commands'
 import { getLog } from '@my/services'
 import { findSerialPort } from '@my/services/serial'
-import { findUsbInterface } from '@my/services/usb'
-import { mergeDefaults, throwError } from '@my/util'
-import { Readable } from 'stream'
+import { throwError } from '@my/util'
 
 import { GdbServer, GdbServerOptions } from '../gdb-server'
 
@@ -17,7 +15,6 @@ interface BmpGdbServerOptions extends GdbServerOptions {
 
 export class BmpGdbServer extends GdbServer<BmpGdbServerOptions> {
   private port = ''
-  swoStream?: Readable = undefined
   private uid?: string
 
   get address() { return this.port }
@@ -29,22 +26,6 @@ export class BmpGdbServer extends GdbServer<BmpGdbServerOptions> {
       ?? throwError(new Error('Failed to autodetect BMP port.\n\nAre you sure you have a BMP connected?'))
 
     log.info('Using serial port', this.port)
-    await this.startSwo()
-  }
-
-  async startSwo(): Promise<void> {
-    const swoInterface = await findUsbInterface(mergeDefaults(this.options.serverConfig.swoPort, this.options.serverConfig))
-
-    if (!swoInterface) {
-      log.warn('No BMP SWO interface found')
-      return
-    }
-
-    log.info('SWO interface', swoInterface)
-    this.use(await swoInterface.claim())
-    const stream = new Readable()
-    this.use(swoInterface.inToStream(stream))
-    this.set(this, 'swoStream', stream)
   }
 
   async attach(mi: MiCommands): Promise<void> {
@@ -60,22 +41,6 @@ export class BmpGdbServer extends GdbServer<BmpGdbServerOptions> {
     log.info('Detected targets', targets)
 
     await mi.targetAttach(1)
-    // enable SWO
-    // different versions of BMP use different commands 🤷‍♂️, so we need to look at help to know what to use
-    const helpRes = await mi.monitor('help')
-    const help = Object.fromEntries(helpRes.$output
-      ?.split('\n')
-      .map(s => s.split(' -- ', 2))
-      .filter(v => v.length === 2)
-      .map(([cmd, help]) => [cmd.trim(), help.trim()])
-      ?? [],
-    )
-
-    if (help.swo) {
-      await mi.monitor('swo enable')
-    } else {
-      await mi.monitor('traceswo enable')
-    }
 
     this.uid = (await mi.monitor('uid')).$output
   }

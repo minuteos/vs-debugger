@@ -1,3 +1,4 @@
+import { SwvFormat } from '@my/gdb/cortex'
 import { EndpointDirection, TransferType } from '@my/services/usb'
 import { Settings } from '@my/settings'
 
@@ -13,10 +14,6 @@ export const defaults: Settings = Object.freeze<Settings>({
     bmp: {
       type: 'bmp',
       deviceId: { vid: BMP_VID, pid: BMP_PID },
-      swoPort: {
-        interface: '*Trace Capture',
-        endpoints: { type: TransferType.Bulk, direction: EndpointDirection.In },
-      },
     },
     qemu: {
       type: 'qemu',
@@ -33,6 +30,18 @@ export const defaults: Settings = Object.freeze<Settings>({
       voltage: 3.3,
       startPowerOn: false,
       stopPowerOff: false,
+    },
+  },
+  swo: {
+    bmp: {
+      type: 'bmp',
+      cpuFrequency: 0,
+      swvFrequency: 100000,
+      format: SwvFormat.Manchester,
+      port: {
+        interface: '*Trace Capture',
+        endpoints: { type: TransferType.Bulk, direction: EndpointDirection.In },
+      },
     },
   },
   defaults: {

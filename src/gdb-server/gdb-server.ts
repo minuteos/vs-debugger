@@ -3,7 +3,6 @@ import { MiCommands } from '@my/gdb/mi.commands'
 import { Plugin } from '@my/plugin'
 import { ChildProcess, getLog } from '@my/services'
 import { pick } from '@my/util'
-import { Readable } from 'stream'
 
 const log = getLog('GDBServer')
 
@@ -21,7 +20,6 @@ export abstract class GdbServer<TOptions extends GdbServerOptions = GdbServerOpt
    * Anything uniquely identifying the target device - used for determining if the same program needs to be loaded again
    */
   abstract readonly identity?: string
-  declare readonly swoStream?: Readable
   declare readonly skipLoad?: boolean
 }
 

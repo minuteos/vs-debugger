@@ -1,4 +1,4 @@
-import { InputLaunchConfiguration, ServerConfiguration, SmuConfiguration } from '@my/configuration'
+import { InputLaunchConfiguration, ServerConfiguration, SmuConfiguration, SwoConfiguration } from '@my/configuration'
 import { defaults } from '@my/defaults'
 import { getLog, getTrace } from '@my/services'
 import { mergeDefaults } from '@my/util'
@@ -11,6 +11,7 @@ export interface Settings {
   trace: string[]
   server: Record<string, ServerConfiguration>
   smu: Record<string, SmuConfiguration>
+  swo: Record<string, SwoConfiguration>
   defaults: {
     launch: Partial<InputLaunchConfiguration>
   }

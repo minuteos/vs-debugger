@@ -9,6 +9,8 @@ import { SwoSession } from '@my/gdb/swo'
 import { getLog, getTrace, progress, traceEnabled } from '@my/services'
 import { createSmu } from '@my/smu/factory'
 import { Smu } from '@my/smu/smu'
+import { createSwo } from '@my/swo/factory'
+import { Swo } from '@my/swo/swo'
 import { delay, findExecutable, throwError } from '@my/util'
 import { ContinuedEvent, DebugSession, InitializedEvent, Response, Scope, StoppedEvent, ThreadEvent, Variable } from '@vscode/debugadapter'
 import { DebugProtocol } from '@vscode/debugprotocol'
@@ -94,6 +96,7 @@ export class MinuteDebugSession extends DebugSession {
   private _gdb?: GdbInstance
   private server?: GdbServer
   private smu?: Smu
+  private swo?: Swo
   private disassemblyCache?: DisassemblyCache
   private disposableStack = new AsyncDisposableStack()
   private varMap = new Map<string | number, GdbVariable>()
@@ -171,10 +174,12 @@ export class MinuteDebugSession extends DebugSession {
     this._gdb = this.disposableStack.use(new GdbInstance(config))
     this.server = this.disposableStack.use(createGdbServer(config))
     this.smu = this.disposableStack.use(createSmu(config))
+    this.swo = this.disposableStack.use(createSwo(config))
     await Promise.all([
       this._gdb.start(await findExecutable('arm-none-eabi-gdb')),
       this.server.start(),
       this.smu?.connect(),
+      this.swo?.connect(),
     ])
 
     this.cortex = new Cortex(this.command)
@@ -185,8 +190,10 @@ export class MinuteDebugSession extends DebugSession {
     await this.server.attach(this.command)
     await this.gdb.threadsStopped()
 
-    if (this.server.swoStream) {
-      const swo = this.disposableStack.use(new SwoSession(this.cortex, this.server.swoStream, (swo) => {
+    if (config.swo && this.swo?.stream) {
+      await this.swo.enable?.(this.server, this.command)
+
+      const swo = this.disposableStack.use(new SwoSession(config.swo, this.cortex, this.swo.stream, (swo) => {
         if (!swo.dwt && swo.ch === 0) {
           vscode.debug.activeDebugConsole.append(swo.data.toString())
         }

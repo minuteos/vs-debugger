@@ -1,8 +1,9 @@
+import { SwoConfiguration } from '@my/configuration'
 import { getLog, getTrace } from '@my/services'
 import { DisposableContainer } from '@my/util'
 import { Readable } from 'stream'
 
-import { Cortex, SwvFormat } from './cortex'
+import { Cortex } from './cortex'
 
 const log = getLog('SWO')
 const trace = getTrace('SWO')
@@ -15,6 +16,7 @@ export interface SwoSourcePacket {
 
 export class SwoSession extends DisposableContainer {
   constructor(
+    private readonly config: SwoConfiguration,
     private readonly cortex: Cortex,
     private readonly swo: Readable,
     private readonly sourcePacket?: (evt: SwoSourcePacket) => void,
@@ -25,10 +27,10 @@ export class SwoSession extends DisposableContainer {
   }
 
   async start() {
+    const { cpuFrequency, swvFrequency, format } = this.config
     // configure trace bits on target
     await this.cortex.setupTrace({
-      cpuFrequency: 72, swvFrequency: 2,
-      format: SwvFormat.Manchester,
+      cpuFrequency, swvFrequency, format,
     })
   }
 
