@@ -12,6 +12,7 @@ import { Smu } from '@my/smu/smu'
 import { createSwo } from '@my/swo/factory'
 import { Swo } from '@my/swo/swo'
 import { delay, findExecutable, throwError } from '@my/util'
+import { color } from '@my/util/ansi'
 import { ContinuedEvent, DebugSession, InitializedEvent, Response, Scope, StoppedEvent, ThreadEvent, Variable } from '@vscode/debugadapter'
 import { DebugProtocol } from '@vscode/debugprotocol'
 import { BehaviorSubject, lastValueFrom, takeWhile } from 'rxjs'
@@ -284,9 +285,11 @@ export class MinuteDebugSession extends DebugSession {
       // execute console command
       try {
         const res = await this.command.console(args.expression.substring(1))
-        response.body = {
-          result: (res.$console ?? ''),
-          variablesReference: 0,
+        if (res.$console) {
+          vscode.debug.activeDebugConsole.append(color.green(res.$console))
+        }
+        if (res.$output) {
+          vscode.debug.activeDebugConsole.append(color.blue(res.$output))
         }
       } catch (error) {
         throw configureError(error, ErrorCode.ConsoleEvaluationError, ErrorDestination.None)
