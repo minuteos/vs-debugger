@@ -70,11 +70,16 @@ class GdbVariable {
     }
   }
 
-  toVariable(): Variable {
+  toVariable(): DebugProtocol.Variable {
     const res = new Variable(
       this.displayName,
       this.value,
       this.expandable ? this.ref : 0) as DebugProtocol.Variable
+
+    const addr = this.value.startsWith('0x') ? parseInt(this.value) : undefined
+    if (addr) {
+      res.memoryReference = `0x${addr.toString(16)}`
+    }
 
     if (this.presentationHint) {
       res.presentationHint = this.presentationHint
@@ -155,6 +160,7 @@ export class MinuteDebugSession extends DebugSession {
       supportsDisassembleRequest: true,
       supportsInstructionBreakpoints: true,
       supportsValueFormattingOptions: true,
+      supportsReadMemoryRequest: true,
       exceptionBreakpointFilters: [
         { filter: '0x7F0', label: 'Fault (Hard/Usage/Bus/Memory)', default: true },
         { filter: '0x1', label: 'Core Reset', default: true },
@@ -297,7 +303,7 @@ export class MinuteDebugSession extends DebugSession {
         throw configureError(error, ErrorCode.ConsoleEvaluationError, ErrorDestination.None)
       }
     } else {
-      // evalaulte variable
+      // evaluate variable
       try {
         const res = await this.command.varCreate({}, '-', addr, args.expression)
         const gvar = this.createOrRegisterVar(args.expression, res, !res.numchild)
@@ -308,6 +314,7 @@ export class MinuteDebugSession extends DebugSession {
         response.body = {
           result: rvar.value,
           variablesReference: rvar.variablesReference,
+          memoryReference: rvar.memoryReference,
         }
       } catch (error) {
         throw configureError(error, ErrorCode.EvaluationError, ErrorDestination.None)
@@ -578,6 +585,15 @@ export class MinuteDebugSession extends DebugSession {
     const res = await cache.fill(base, args.instructionOffset ?? 0, args.instructionCount)
     response.body = {
       instructions: res.map(mi.mapInstruction),
+    }
+  }
+
+  async command_readMemory(response: DebugProtocol.ReadMemoryResponse, args: DebugProtocol.ReadMemoryArguments) {
+    const addr = parseInt(args.memoryReference) + (args.offset ?? 0)
+    const mem = args.count ? await this.command.readMemory(addr, args.count) : Buffer.alloc(0)
+    response.body = {
+      address: mi.formatAddress(addr),
+      data: mem.toString('base64'),
     }
   }
 
