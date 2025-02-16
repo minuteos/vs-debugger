@@ -7,12 +7,13 @@ import { GdbInstance } from '@my/gdb/instance'
 import { BreakpointInfo, BreakpointInsertCommandResult, DebugFileInfo as DebugFileInfo, DebugFileSymbolInfo, FrameInfo, MiCommands, MiExecStatus, ValueFormat, VariableInfo } from '@my/gdb/mi.commands'
 import { SwoSession } from '@my/gdb/swo'
 import { getLog, getTrace, progress, traceEnabled } from '@my/services'
+import { Svd, SvdField, SvdPeripheral, SvdRegister } from '@my/services/svd'
+import { getSvd } from '@my/services/svd.cache'
 import { createSmu } from '@my/smu/factory'
 import { Smu } from '@my/smu/smu'
 import { createSwo } from '@my/swo/factory'
 import { Swo } from '@my/swo/swo'
-import { delay, findExecutable, throwError } from '@my/util'
-import { color } from '@my/util/ansi'
+import { color, delay, findExecutable, naturalCompare, throwError } from '@my/util'
 import { ContinuedEvent, DebugSession, InitializedEvent, Response, Scope, StoppedEvent, ThreadEvent, Variable } from '@vscode/debugadapter'
 import { DebugProtocol } from '@vscode/debugprotocol'
 import { BehaviorSubject, lastValueFrom, takeWhile } from 'rxjs'
@@ -34,10 +35,13 @@ const IDLE_TIMEOUT = 100
  * Fake variable reference numbers for the scopes
  */
 enum VariableScope {
-  Registers = 4000000000,
+  Registers = 0x10000000,
+  Peripherals,
   Global,
-  LocalStart,
-  LocalEnd = 4100000000,
+  Local,
+  Peripheral = 0x20000000,
+  PeripheralRegister = 0x21000000,
+  PeripheralGroup = 0x22000000,
 }
 
 interface GlobalVariable {
@@ -98,6 +102,35 @@ function symbolReference(file: DebugFileInfo, sym: DebugFileSymbolInfo) {
   return `'${file.filename}'::${name}`
 }
 
+function peripheralRegisterValue(s: Svd, p: SvdPeripheral, r: SvdRegister, data: Buffer[], field?: SvdField) {
+  const bytes = r.size / s.addressUnitBits
+  const i = p.addressBlocks.findIndex(b => r.addressOffset >= b.offset && r.addressOffset + bytes <= b.offset + b.size)
+  if (i < 0) {
+    return undefined
+  }
+
+  let value = data[i][s.cpu?.endian === 'big' ? 'readUIntBE' : 'readUIntLE'](r.addressOffset, bytes)
+  const parts = []
+
+  if (!field) {
+    parts.push(color.greenBright(`0x${value.toString(16).padStart(bytes * 2, '0')}`))
+    parts.push(`(${r.description})`)
+  } else {
+    value >>>= field.bitOffset
+    value &= (1 << field.bitWidth) - 1
+    parts.push(color.cyanBright(value.toString()))
+    if (field.bitWidth > 3) {
+      parts.push(color.greenBright(`0x${value.toString(16)}`))
+    }
+    if (field.bitWidth > 1) {
+      parts.push(color.yellowBright(`0b${value.toString(2).padStart(field.bitWidth, '0')}`))
+    }
+    parts.push(`(${field.description})`)
+  }
+
+  return parts.join(' ')
+}
+
 export class MinuteDebugSession extends DebugSession {
   private _gdb?: GdbInstance
   private server?: GdbServer
@@ -109,6 +142,8 @@ export class MinuteDebugSession extends DebugSession {
   private varNextRef = 1
   private cortex?: Cortex
   private target!: TargetInfo
+  private svdPromise?: Promise<Svd | undefined>
+  private peripheralData = new Map<SvdPeripheral, Buffer[]>()
   private dapActive$ = new BehaviorSubject(0)
 
   get gdb(): GdbInstance {
@@ -158,6 +193,7 @@ export class MinuteDebugSession extends DebugSession {
 
   command_initialize(response: DebugProtocol.InitializeResponse, args: DebugProtocol.InitializeRequestArguments) {
     response.body = {
+      supportsANSIStyling: true,
       supportsSteppingGranularity: true,
       supportsDisassembleRequest: true,
       supportsInstructionBreakpoints: true,
@@ -196,6 +232,9 @@ export class MinuteDebugSession extends DebugSession {
     await this.command.targetSelect('extended-remote', this.server.address)
 
     this.target = await this.server.attach(this.command)
+    if (this.target.model) {
+      this.svdPromise = getSvd(this.target.model)
+    }
     await this.gdb.threadsStopped()
 
     if (config.swo && this.swo?.stream) {
@@ -326,12 +365,14 @@ export class MinuteDebugSession extends DebugSession {
     }
   }
 
-  command_scopes(response: DebugProtocol.ScopesResponse, args: DebugProtocol.ScopesArguments) {
+  async command_scopes(response: DebugProtocol.ScopesResponse, args: DebugProtocol.ScopesArguments) {
+    const svd = await this.svdPromise
     response.body = {
       scopes: [
-        new Scope('Local', VariableScope.LocalStart + args.frameId, false),
+        new Scope('Local', VariableScope.Local + args.frameId, true),
         new Scope('Global', VariableScope.Global, true),
         new Scope('Registers', VariableScope.Registers, true),
+        ...svd ? [new Scope('Peripherals', VariableScope.Peripherals, true)] : [],
       ],
     }
   }
@@ -390,42 +431,162 @@ export class MinuteDebugSession extends DebugSession {
     return res
   }
 
-  async command_variables(response: DebugProtocol.VariablesResponse, args: DebugProtocol.VariablesArguments) {
-    let variables: Variable[] = []
-    const ref = args.variablesReference as VariableScope
-    if (ref === VariableScope.Global) {
-      const globals = await this.getGlobalVariables()
-      variables = globals.map(g => g.variable.toVariable())
-    } else if (ref === VariableScope.Registers) {
-      // special case
-      const registerNames = this.registerNames ??= (await this.command.dataListRegisterNames()).registerNames
-      const values = await this.command.dataListRegisterValues({ skipUnavailable: true },
-        args.format?.hex ? ValueFormat.Hexadecimal : ValueFormat.Natural)
-      variables = values.registerValues.map(({ number, value }) => new Variable(registerNames[number], value.toString()))
-    } else if (ref >= VariableScope.LocalStart) {
-      const frame = ref - VariableScope.LocalStart
-      const locals = await this.getLocalVariables(frame)
-      variables = locals.map(l => l.toVariable())
-    } else {
-      const res = await this.command.varListChildren({
-        allValues: true,
-      }, this.getVar(args.variablesReference).name)
+  async variables_global() {
+    const globals = await this.getGlobalVariables()
+    return globals.map(g => g.variable.toVariable())
+  }
 
-      for (const v of res.children) {
-        const gv = this.createOrRegisterVar(String(v.exp), v)
-        if (v.type === undefined && typeof v.exp === 'string' && ['public', 'protected', 'private', 'internal'].includes(v.exp)) {
-          // turn access modifiers into presentation hints
-          const ph: DebugProtocol.VariablePresentationHint = { visibility: v.exp !== 'public' ? 'internal' : v.exp }
-          for (const vv of (await this.command.varListChildren({ allValues: true }, v.name)).children) {
-            const gvv = this.createOrRegisterVar(String(vv.exp), vv)
-            gvv.presentationHint = ph
-            variables.push(gvv.toVariable())
-          }
+  async variables_local(frame: number) {
+    const locals = await this.getLocalVariables(frame)
+    return locals.map(l => l.toVariable())
+  }
+
+  async variables_registers(hex = false) {
+    const registerNames = this.registerNames ??= (await this.command.dataListRegisterNames()).registerNames
+    const values = await this.command.dataListRegisterValues({ skipUnavailable: true },
+      hex ? ValueFormat.Hexadecimal : ValueFormat.Natural)
+    return values.registerValues.map(({ number, value }) => new Variable(registerNames[number], value.toString()))
+  }
+
+  async variables_expand(ref: number) {
+    const res = await this.command.varListChildren({
+      allValues: true,
+    }, this.getVar(ref).name)
+
+    const variables: Variable[] = []
+
+    for (const v of res.children) {
+      const gv = this.createOrRegisterVar(String(v.exp), v)
+      if (v.type === undefined && typeof v.exp === 'string' && ['public', 'protected', 'private', 'internal'].includes(v.exp)) {
+        // turn access modifiers into presentation hints
+        const ph: DebugProtocol.VariablePresentationHint = { visibility: v.exp !== 'public' ? 'internal' : v.exp }
+        for (const vv of (await this.command.varListChildren({ allValues: true }, v.name)).children) {
+          const gvv = this.createOrRegisterVar(String(vv.exp), vv)
+          gvv.presentationHint = ph
+          variables.push(gvv.toVariable())
+        }
+      } else {
+        variables.push(gv.toVariable())
+      }
+    }
+
+    return variables
+  }
+
+  async variables_peripherals() {
+    const svd = await this.svdPromise
+    if (!svd) {
+      return []
+    }
+
+    const grouped = svd.peripherals.reduce<Record<string, [number, SvdPeripheral][]>>((grp, p, i) => {
+      (grp[p.groupName ?? ''] ??= []).push([i, p])
+      return grp
+    }, {})
+
+    const res: Variable[] = []
+
+    for (const [g, peripherals] of Object.entries(grouped)) {
+      for (const [i, p] of peripherals) {
+        if (g === '' || peripherals.length === 1) {
+          res.push(new Variable(p.name, p.description ?? p.name, VariableScope.Peripheral + i))
         } else {
-          variables.push(gv.toVariable())
+          res.push(new Variable(g, p.description ? `Group (${p.description})` : 'Group', VariableScope.PeripheralGroup + i))
+          break
         }
       }
     }
+
+    res.sort((v1, v2) => naturalCompare(v1.name, v2.name))
+    return res
+  }
+
+  async variables_peripheralGroup(index: number) {
+    const svd = await this.svdPromise
+    if (!svd) {
+      return []
+    }
+
+    const grpName = svd.peripherals[index].groupName
+    const res: Variable[] = []
+
+    for (const [i, p] of svd.peripherals.entries()) {
+      if (p.groupName === grpName) {
+        res.push(new Variable(p.name, p.description ?? p.name, VariableScope.Peripheral + i))
+      }
+    }
+    res.sort((v1, v2) => naturalCompare(v1.name, v2.name))
+    return res
+  }
+
+  async variables_peripheral(peripheral: number) {
+    const svd = await this.svdPromise
+    if (!svd) {
+      return []
+    }
+
+    const p = svd.peripherals[peripheral]
+
+    // this is a great time to read the peripheral data
+    const data = await Promise.all(p.addressBlocks.map(blk => this.command.readMemory(p.baseAddress + blk.offset, blk.size)))
+    this.peripheralData.set(p, data)
+
+    const maxLen = p.registers.reduce((a, r) => Math.max(a, r.name.length), 0)
+    return p.registers.map((r, i) => new Variable(
+      r.name.padEnd(maxLen, ' '),
+      peripheralRegisterValue(svd, p, r, data) ?? '???',
+      r.fields ? VariableScope.PeripheralRegister + (peripheral << 12) + i : 0,
+    ))
+  }
+
+  async variables_peripheralRegister(peripheral: number, register: number) {
+    const svd = await this.svdPromise
+    if (!svd) {
+      return []
+    }
+
+    const p = svd.peripherals[peripheral]
+    const r = p.registers[register]
+    if (!r.fields) {
+      return []
+    }
+
+    const data = this.peripheralData.get(p)
+
+    if (!data) {
+      return []
+    }
+
+    const maxLen = r.fields.reduce((a, f) => Math.max(a, f.name.length), 0)
+    return r.fields.map(f => new Variable(
+      f.name.padEnd(maxLen, ' '),
+      peripheralRegisterValue(svd, p, r, data, f) ?? '???',
+    ))
+  }
+
+  async command_variables(response: DebugProtocol.VariablesResponse, args: DebugProtocol.VariablesArguments) {
+    const ref = args.variablesReference as VariableScope
+    let variables: Variable[] | undefined
+
+    if (ref === VariableScope.Global) {
+      variables = await this.variables_global()
+    } else if (ref === VariableScope.Registers) {
+      variables = await this.variables_registers(args.format?.hex)
+    } else if (ref === VariableScope.Peripherals) {
+      variables = await this.variables_peripherals()
+    } else if (ref >= VariableScope.PeripheralGroup) {
+      variables = await this.variables_peripheralGroup(ref - VariableScope.PeripheralGroup)
+    } else if (ref >= VariableScope.PeripheralRegister) {
+      const n = ref - VariableScope.PeripheralRegister
+      variables = await this.variables_peripheralRegister(n >>> 12, n & 0xfff)
+    } else if (ref >= VariableScope.Peripheral) {
+      variables = await this.variables_peripheral(ref - VariableScope.Peripheral)
+    } else if (ref >= VariableScope.Local) {
+      variables = await this.variables_local(ref - VariableScope.Local)
+    } else {
+      variables = await this.variables_expand(ref)
+    }
+
     response.body = {
       variables,
     }
