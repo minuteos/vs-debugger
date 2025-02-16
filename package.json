@@ -4,7 +4,7 @@
   "publisher": "minuteos",
   "displayName": "minuteDebug",
   "description": "GDB-based debug adapter for microcontrollers",
-  "version": "0.0.1",
+  "version": "0.0.2",
   "repository": {
     "url": "https://github.com/minuteos/vs-debugger"
   },
