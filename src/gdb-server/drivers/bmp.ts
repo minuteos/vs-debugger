@@ -5,7 +5,7 @@ import { getLog } from '@my/services'
 import { findSerialPort } from '@my/services/serial'
 import { throwError } from '@my/util'
 
-import { GdbServer, GdbServerOptions } from '../gdb-server'
+import { GdbServer, GdbServerOptions, TargetInfo } from '../gdb-server'
 
 const log = getLog('BMP')
 
@@ -28,7 +28,7 @@ export class BmpGdbServer extends GdbServer<BmpGdbServerOptions> {
     log.info('Using serial port', this.port)
   }
 
-  async attach(mi: MiCommands): Promise<void> {
+  async attach(mi: MiCommands): Promise<TargetInfo> {
     log.info('Scanning targets...')
 
     const res = await mi.monitor('swdp_scan')
@@ -40,8 +40,12 @@ export class BmpGdbServer extends GdbServer<BmpGdbServerOptions> {
     log.info(voltage)
     log.info('Detected targets', targets)
 
+    const model = targets[0].split(' ').filter(s => s)[1]
+
     await mi.targetAttach(1)
 
     this.uid = (await mi.monitor('uid')).$output
+
+    return { model }
   }
 }

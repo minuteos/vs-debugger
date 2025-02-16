@@ -10,9 +10,13 @@ export interface GdbServerOptions {
   launchConfig: LaunchConfiguration
 }
 
+export interface TargetInfo {
+  model?: string
+}
+
 export abstract class GdbServer<TOptions extends GdbServerOptions = GdbServerOptions> extends Plugin<TOptions> {
   abstract start(): Promise<void>
-  abstract attach(mi: MiCommands): Promise<void>
+  abstract attach(mi: MiCommands): Promise<TargetInfo>
 
   abstract readonly address: string
 

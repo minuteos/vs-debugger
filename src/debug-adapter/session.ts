@@ -1,7 +1,7 @@
 import { expandConfiguration, InputLaunchConfiguration, LaunchConfiguration } from '@my/configuration'
 import { configureError, DebugError, ErrorCode, ErrorDestination, MiError } from '@my/errors'
 import { createGdbServer } from '@my/gdb-server/factory'
-import { GdbServer } from '@my/gdb-server/gdb-server'
+import { GdbServer, TargetInfo } from '@my/gdb-server/gdb-server'
 import { Cortex } from '@my/gdb/cortex'
 import { GdbInstance } from '@my/gdb/instance'
 import { BreakpointInfo, BreakpointInsertCommandResult, DebugFileInfo as DebugFileInfo, DebugFileSymbolInfo, FrameInfo, MiCommands, MiExecStatus, ValueFormat, VariableInfo } from '@my/gdb/mi.commands'
@@ -108,6 +108,7 @@ export class MinuteDebugSession extends DebugSession {
   private varMap = new Map<string | number, GdbVariable>()
   private varNextRef = 1
   private cortex?: Cortex
+  private target!: TargetInfo
   private dapActive$ = new BehaviorSubject(0)
 
   get gdb(): GdbInstance {
@@ -194,7 +195,7 @@ export class MinuteDebugSession extends DebugSession {
     await this.command.gdbSet('mem', 'inaccessible-by-default', 0)
     await this.command.targetSelect('extended-remote', this.server.address)
 
-    await this.server.attach(this.command)
+    this.target = await this.server.attach(this.command)
     await this.gdb.threadsStopped()
 
     if (config.swo && this.swo?.stream) {

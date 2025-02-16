@@ -1,7 +1,7 @@
 import { QemuServerConfiguration } from '@my/configuration'
 import { allocateTcpPort, findExecutable } from '@my/util'
 
-import { ExecutableGdbServer, GdbServerOptions } from '../gdb-server'
+import { ExecutableGdbServer, GdbServerOptions, TargetInfo } from '../gdb-server'
 
 const DEFAULT_MACHINE = 'netduinoplus2'
 
@@ -35,7 +35,7 @@ export class QemuGdbServer extends ExecutableGdbServer<QemuGdbServerOptions> {
     ]
   }
 
-  attach(): Promise<void> {
-    return Promise.resolve()
+  attach(): Promise<TargetInfo> {
+    return Promise.resolve({})
   }
 }
