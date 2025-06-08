@@ -52,10 +52,16 @@ export interface BmpSwoConfiguration extends DeviceMatch, CommonSwoConfiguration
 
 export type SwoConfiguration = BmpSwoConfiguration
 
+export interface SvdConfiguration {
+  model: string
+  peripherals?: string | string[]
+}
+
 export interface InputLaunchConfiguration {
   server?: string | ServerConfiguration
   smu?: string | SmuConfiguration
   swo?: string | SwoConfiguration
+  svd?: string | SvdConfiguration[]
   cwd?: string
   env?: Record<string, string>
   program: string
@@ -66,6 +72,7 @@ export interface LaunchConfiguration {
   server: ServerConfiguration
   smu?: SmuConfiguration
   swo?: SwoConfiguration
+  svd?: SvdConfiguration[]
   cwd?: string
   env?: Record<string, string>
   program: string
@@ -90,12 +97,13 @@ function lookup<T extends { type: string } | undefined>(table: Record<string, T>
 }
 
 export function expandConfiguration(config: InputLaunchConfiguration): LaunchConfiguration {
-  const { server, smu, swo, ...other } = mergeDefaults(config, settings.defaults.launch)
+  const { server, smu, swo, svd, ...other } = mergeDefaults(config, settings.defaults.launch)
   return {
     ...other,
     server: lookup(settings.server, server)
       ?? throwError(new Error('server must be specified in launch configuration or in minute-debug.defaults.launch')),
     smu: lookup(settings.smu, smu),
     swo: lookup(settings.swo, swo),
+    svd: typeof svd === 'string' ? [{ model: svd }] : svd,
   }
 }

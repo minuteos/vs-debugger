@@ -1,4 +1,4 @@
-import { expandConfiguration, InputLaunchConfiguration, LaunchConfiguration } from '@my/configuration'
+import { expandConfiguration, InputLaunchConfiguration, LaunchConfiguration, SvdConfiguration } from '@my/configuration'
 import { configureError, DebugError, ErrorCode, ErrorDestination, MiError } from '@my/errors'
 import { createGdbServer } from '@my/gdb-server/factory'
 import { GdbServer, TargetInfo } from '@my/gdb-server/gdb-server'
@@ -13,7 +13,7 @@ import { createSmu } from '@my/smu/factory'
 import { Smu } from '@my/smu/smu'
 import { createSwo } from '@my/swo/factory'
 import { Swo } from '@my/swo/swo'
-import { color, delay, findExecutable, naturalCompare, throwError } from '@my/util'
+import { color, delay, findExecutable, getWildcardMatcher, isTruthy, naturalCompare, throwError } from '@my/util'
 import { ContinuedEvent, DebugSession, InitializedEvent, Response, Scope, StoppedEvent, ThreadEvent, Variable } from '@vscode/debugadapter'
 import { DebugProtocol } from '@vscode/debugprotocol'
 import { BehaviorSubject, lastValueFrom, takeWhile } from 'rxjs'
@@ -232,9 +232,8 @@ export class MinuteDebugSession extends DebugSession {
     await this.command.targetSelect('extended-remote', this.server.address)
 
     this.target = await this.server.attach(this.command)
-    if (this.target.model) {
-      this.svdPromise = getSvd(this.target.model)
-    }
+
+    this.svdPromise = this.getSvd(config.svd ?? [{ model: 'target' }])
     await this.gdb.threadsStopped()
 
     if (config.swo && this.swo?.stream) {
@@ -288,6 +287,29 @@ export class MinuteDebugSession extends DebugSession {
     this.gdb.threads$.subscribe(() => {
       this.sendExecEvents()
     })
+  }
+
+  async getSvd(layers: SvdConfiguration[]) {
+    const getSvdFromConfig = async (cfg: SvdConfiguration) => {
+      if (cfg.model === 'target' && this.target.model) {
+        cfg = { ...cfg, model: this.target.model }
+      }
+      const svd = await getSvd(cfg.model)
+      if (svd && cfg.peripherals) {
+        const matcher = getWildcardMatcher(...(typeof cfg.peripherals === 'string' ? [cfg.peripherals] : cfg.peripherals))
+        svd.peripherals = svd.peripherals.filter(p => matcher.exec(p.name))
+      }
+      return svd
+    }
+
+    const res = (await Promise.all(layers.map(getSvdFromConfig))).filter(isTruthy)
+
+    return res.length
+      ? {
+          ...res[0],
+          peripherals: res.flatMap(svd => svd.peripherals),
+        }
+      : undefined
   }
 
   async command_disconnect(response: DebugProtocol.DisconnectResponse, args: DebugProtocol.DisconnectArguments) {
@@ -372,7 +394,7 @@ export class MinuteDebugSession extends DebugSession {
         new Scope('Local', VariableScope.Local + args.frameId, true),
         new Scope('Global', VariableScope.Global, true),
         new Scope('Registers', VariableScope.Registers, true),
-        ...svd ? [new Scope('Peripherals', VariableScope.Peripherals, true)] : [],
+        ...svd ? [new Scope(`Peripherals (${svd.name})`, VariableScope.Peripherals, true)] : [],
       ],
     }
   }
