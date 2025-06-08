@@ -31,6 +31,11 @@ export class BmpGdbServer extends GdbServer<BmpGdbServerOptions> {
   async attach(mi: MiCommands): Promise<TargetInfo> {
     log.info('Scanning targets...')
 
+    const { power } = this.options.serverConfig
+    if (power !== undefined) {
+      await mi.monitor('tpwr ' + (power ? 'enable' : 'disable'))
+    }
+
     const res = await mi.monitor('swdp_scan')
     const [voltage, result, , ...targets] = (res.$output ?? '').split('\n')
     if (result != 'Available Targets:') {

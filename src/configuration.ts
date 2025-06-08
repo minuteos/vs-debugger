@@ -19,6 +19,7 @@ export interface QemuServerConfiguration {
 export interface BmpServerConfiguration extends DeviceMatch {
   type: 'bmp'
   port?: string
+  power?: boolean
 }
 
 export type ServerConfiguration = QemuServerConfiguration | BmpServerConfiguration
