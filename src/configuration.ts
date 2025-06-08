@@ -22,7 +22,11 @@ export interface BmpServerConfiguration extends DeviceMatch {
   power?: boolean
 }
 
-export type ServerConfiguration = QemuServerConfiguration | BmpServerConfiguration
+export interface StlinkServerConfiguration extends UsbInterfaceMatch {
+  type: 'stlink'
+}
+
+export type ServerConfiguration = QemuServerConfiguration | BmpServerConfiguration | StlinkServerConfiguration
 
 export enum SmuType {
   StLink = 'stlink',
@@ -86,7 +90,7 @@ function lookup<T extends { type: string } | undefined>(table: Record<string, T>
   }
 
   if (typeof cfg === 'string') {
-    return table[cfg]
+    return table[cfg] ?? throwError(new Error(`Unknown server configuration '${cfg}'`))
   }
 
   const defaults = table[cfg.type]

@@ -1,7 +1,7 @@
 import { getLog, getTrace } from '@my/services'
 import { DeviceMatch } from '@my/services/match.common'
 import { Matcher, MatchValueOrFunction } from '@my/util'
-import { Readable } from 'stream'
+import { Readable, Writable } from 'stream'
 import { ConfigDescriptor, Endpoint, EndpointDescriptor, InEndpoint, Interface, InterfaceDescriptor, OutEndpoint, usb } from 'usb'
 import { promisify } from 'util'
 
@@ -69,14 +69,24 @@ export class MatchedUsbInterface {
 
     try {
       log.debug('Claiming', this.toJSON())
-      this.device.open()
+      this.device.open(false)
+
+      const setConfiguration = promisify(this.device.setConfiguration.bind(this.device))
+      await setConfiguration(1)
+
       ds.defer(() => {
+        log.debug('Closing', this.toJSON())
         this.device.close()
+        log.debug('Closed', this.toJSON())
       })
 
       const iface = this.device.interface(this.interfaceNumber)
       iface.claim()
-      ds.defer(() => iface.releaseAsync())
+      ds.defer(async () => {
+        log.debug('Releasing', iface)
+        await iface.releaseAsync()
+        log.debug('Released', iface)
+      })
       await iface.setAltSettingAsync(this.alternateSetting)
       log.debug('Claimed', this.toJSON())
       this.claimed = iface
@@ -159,6 +169,23 @@ export class MatchedUsbInterface {
     })
     return res
   }
+
+  streamToOut(stream: Writable, index = 0, timeout = 1000): AsyncDisposable {
+    const ep = this.out(index)
+    const logName = `OUT ${(ep.address & 0x7F).toString()}`
+    ep.timeout = timeout
+
+    stream._write = (chunk, encoding, callback) => {
+      const buf = Buffer.from(chunk as string, encoding)
+      ep.transfer(buf, callback)
+    }
+
+    const res = new AsyncDisposableStack()
+    res.defer(() => {
+      log.debug(logName, 'Stopped')
+    })
+    return res
+  }
 }
 
 export async function findUsbInterface(match: UsbInterfaceMatch): Promise<MatchedUsbInterface | undefined> {
@@ -182,8 +209,10 @@ export async function findUsbInterface(match: UsbInterfaceMatch): Promise<Matche
           && await matcher.try('Serial', match.serial, () => getStringDescriptor(dd.iSerialNumber))) {
           for (const cfg of dev.allConfigDescriptors) {
             if (await matcher.try('. Configuration', match.configuration, () => getStringDescriptor(cfg.iConfiguration))) {
+              log.debug('Config', await getStringDescriptor(cfg.iConfiguration), cfg.interfaces)
               for (const iface of cfg.interfaces) {
                 for (const alt of iface) {
+                  log.debug('Interface', await getStringDescriptor(alt.iInterface))
                   if (await matcher.try('.. Interface', match.interface, () => getStringDescriptor(alt.iInterface))) {
                     const matchedEndpoints: EndpointDescriptor[] = []
 

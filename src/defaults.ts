@@ -6,6 +6,7 @@ const BMP_VID = 0x1d50
 const BMP_PID = 0x6018
 
 const ST_VID = 0x0483
+const STLINK_V2_PID = 0x3748
 const STLINK_V3PWR_PID = 0x3757
 
 export const defaults: Settings = Object.freeze<Settings>({
@@ -17,6 +18,14 @@ export const defaults: Settings = Object.freeze<Settings>({
     },
     qemu: {
       type: 'qemu',
+    },
+    stlink: {
+      type: 'stlink',
+      deviceId: [
+        { vid: ST_VID, pid: STLINK_V2_PID },
+        { vid: ST_VID, pid: STLINK_V3PWR_PID },
+      ],
+      interface: '*Debug|ST Link',
     },
   },
   smu: {

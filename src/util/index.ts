@@ -1,4 +1,5 @@
 export * from './ansi'
+export * from './array'
 export * from './case'
 export * from './crypto'
 export * from './disposable'
