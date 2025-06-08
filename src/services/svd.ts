@@ -58,7 +58,7 @@ export interface SvdAddressBlock {
   offset: number
   size: number
   usage: SvdUsage
-  protection: SvdProtection
+  protection?: SvdProtection
 }
 
 export type SvdUsage = 'registers' | 'buffer' | 'reserved'

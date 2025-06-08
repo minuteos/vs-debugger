@@ -170,7 +170,7 @@ async function svdFromXml(xml: string): Promise<Svd> {
       ...pRestWithoutRegisters,
     }
 
-    if (pRegisters) {
+    if (pRegisters?.register) {
       // patch the register array
       const newRegs = [pRegisters.register].flat().map((r) => {
         return {
