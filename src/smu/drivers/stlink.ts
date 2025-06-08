@@ -1,5 +1,5 @@
 import { StlinkSmuConfiguration } from '@my/configuration'
-import { getLog } from '@my/services'
+import { getLog, getTrace } from '@my/services'
 import { findSerialPort } from '@my/services/serial'
 import { LineReader, PromiseWithResolvers, promiseWithResolvers } from '@my/util'
 import { throwError } from '@my/util'
@@ -10,6 +10,7 @@ import { promisify } from 'util'
 import { Smu, SmuOptions } from '../smu'
 
 const log = getLog('STLink-SMU')
+const trace = getTrace('STLink-SMU')
 
 interface StlinkSmuOptions extends SmuOptions {
   smuConfig: StlinkSmuConfiguration
@@ -90,7 +91,7 @@ export class StlinkSmu extends Smu<StlinkSmuOptions> {
         for (const lbuf of lr.processAny(chunk)) {
           if (lbuf.length) {
             const line = lbuf.toString()
-            log.trace('<', line.toString())
+            trace('<', line)
             if (line.startsWith('ack ')) {
               this.pendingCommand?.resolve(line.substring(4))
             }
@@ -126,7 +127,7 @@ export class StlinkSmu extends Smu<StlinkSmuOptions> {
     await this.commandSema.acquire()
     try {
       const command = args.map(formatArg).join(' ')
-      log.trace('>', command)
+      trace('>', command)
       this.pendingCommand = {
         ...p, command,
       }
