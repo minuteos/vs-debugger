@@ -1,6 +1,6 @@
 import { expandConfiguration, InputLaunchConfiguration, LaunchConfiguration, SvdConfiguration } from '@my/configuration'
 import { configureError, DebugError, ErrorCode, ErrorDestination, MiError } from '@my/errors'
-import { TargetInfo } from '@my/gdb-server/gdb-server'
+import { GdbServer, TargetInfo } from '@my/gdb-server/gdb-server'
 import { Cortex } from '@my/gdb/cortex'
 import { GdbInstance } from '@my/gdb/instance'
 import { BreakpointInfo, BreakpointInsertCommandResult, DebugFileInfo as DebugFileInfo, DebugFileSymbolInfo, FrameInfo, MiCommands, MiExecStatus, ValueFormat, VariableInfo } from '@my/gdb/mi.commands'
@@ -9,6 +9,7 @@ import { Probe } from '@my/probe'
 import { getLog, getTrace, progress, traceEnabled } from '@my/services'
 import { Svd, SvdField, SvdPeripheral, SvdRegister } from '@my/services/svd'
 import { getSvd } from '@my/services/svd.cache'
+import { Swo } from '@my/swo/swo'
 import { color, delay, getWildcardMatcher, isTruthy, naturalCompare, throwError } from '@my/util'
 import { ContinuedEvent, DebugSession, InitializedEvent, Response, Scope, StoppedEvent, ThreadEvent, Variable } from '@vscode/debugadapter'
 import { DebugProtocol } from '@vscode/debugprotocol'
@@ -145,6 +146,14 @@ export class MinuteDebugSession extends DebugSession {
     return this.gdb.command
   }
 
+  get server(): GdbServer {
+    return this.probe?.server ?? throwError(new Error('Not connected'))
+  }
+
+  get swo(): Swo | undefined {
+    return this.probe?.swo
+  }
+
   get target(): TargetInfo {
     return this.probe?.target ?? throwError(new Error('Not connected'))
   }
@@ -203,17 +212,16 @@ export class MinuteDebugSession extends DebugSession {
   }
 
   private async launchOrAttach(config: LaunchConfiguration, loadProgram: boolean) {
-    const probe = this.disposableStack.use(new Probe(config))
+    const probe = this.probe = this.disposableStack.use(new Probe(config))
     await probe.connect()
-    this.probe = probe
 
-    this.cortex = new Cortex(probe.command)
+    this.cortex = new Cortex(this.command)
     this.svdPromise = this.getSvd(config.svd ?? [{ model: 'target' }])
 
-    if (config.swo && probe.swo?.stream) {
-      await probe.swo.enable?.(probe.server, probe.command)
+    if (config.swo && this.swo?.stream) {
+      await this.swo.enable?.(this.server, this.command)
 
-      const swo = this.disposableStack.use(new SwoSession(config.swo, this.cortex, probe.swo.stream, (swo) => {
+      const swo = this.disposableStack.use(new SwoSession(config.swo, this.cortex, this.swo.stream, (swo) => {
         if (!swo.dwt && swo.ch === 0) {
           vscode.debug.activeDebugConsole.append(swo.data.toString())
         }
@@ -221,7 +229,7 @@ export class MinuteDebugSession extends DebugSession {
       await swo.start()
     }
 
-    if (loadProgram && !probe.server.skipLoad) {
+    if (loadProgram && !this.server.skipLoad) {
       await progress('Loading program', async (p) => {
         await probe.load((message, fraction) => {
           p.report(message, fraction)
@@ -231,16 +239,16 @@ export class MinuteDebugSession extends DebugSession {
       // starti (executed via console) is tricky, because the running event comes only after
       // the command returns, so the 'threadsStopped' gate below is skipped immediately
       const startStopPromise = (async () => {
-        await probe.gdb.threadsNotStopped()
-        await probe.gdb.threadsStopped()
+        await this.gdb.threadsNotStopped()
+        await this.gdb.threadsStopped()
       })()
-      await probe.command.console('starti')
+      await this.command.console('starti')
       log.debug('starti complete')
       await startStopPromise
       log.debug('stopped after starti')
     }
 
-    await probe.gdb.threadsStopped()
+    await this.gdb.threadsStopped()
 
     this.sendEvent(new InitializedEvent())
 
@@ -248,11 +256,11 @@ export class MinuteDebugSession extends DebugSession {
     await this.idle(1)
 
     if (!config.stopAtConnect) {
-      await probe.command.execContinue({ all: true })
-      await probe.gdb.threadsNotStopped()
+      await this.command.execContinue({ all: true })
+      await this.gdb.threadsNotStopped()
     }
 
-    probe.gdb.threads$.subscribe(() => {
+    this.gdb.threads$.subscribe(() => {
       this.sendExecEvents()
     })
   }
