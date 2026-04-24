@@ -1,19 +1,17 @@
 import { expandConfiguration, InputLaunchConfiguration, LaunchConfiguration, SvdConfiguration } from '@my/configuration'
 import { configureError, DebugError, ErrorCode, ErrorDestination, MiError } from '@my/errors'
-import { createGdbServer } from '@my/gdb-server/factory'
-import { GdbServer, TargetInfo } from '@my/gdb-server/gdb-server'
+import { TargetInfo } from '@my/gdb-server/gdb-server'
 import { Cortex } from '@my/gdb/cortex'
 import { GdbInstance } from '@my/gdb/instance'
 import { BreakpointInfo, BreakpointInsertCommandResult, DebugFileInfo as DebugFileInfo, DebugFileSymbolInfo, FrameInfo, MiCommands, MiExecStatus, ValueFormat, VariableInfo } from '@my/gdb/mi.commands'
 import { SwoSession } from '@my/gdb/swo'
+import { Probe } from '@my/probe'
 import { getLog, getTrace, progress, traceEnabled } from '@my/services'
 import { Svd, SvdField, SvdPeripheral, SvdRegister } from '@my/services/svd'
 import { getSvd } from '@my/services/svd.cache'
-import { createSmu } from '@my/smu/factory'
-import { Smu } from '@my/smu/smu'
 import { createSwo } from '@my/swo/factory'
 import { Swo } from '@my/swo/swo'
-import { color, delay, findExecutable, getWildcardMatcher, isTruthy, naturalCompare, throwError } from '@my/util'
+import { color, delay, getWildcardMatcher, isTruthy, naturalCompare, throwError } from '@my/util'
 import { ContinuedEvent, DebugSession, InitializedEvent, Response, Scope, StoppedEvent, ThreadEvent, Variable } from '@vscode/debugadapter'
 import { DebugProtocol } from '@vscode/debugprotocol'
 import { BehaviorSubject, lastValueFrom, takeWhile } from 'rxjs'
@@ -21,7 +19,6 @@ import * as vscode from 'vscode'
 
 import { DisassemblyCache } from './disassembly'
 import * as mi from './mi.mappings'
-import { smartLoadSkip } from './smart-load'
 
 type DebugHandler = (response: DebugProtocol.Response, args: unknown, request: DebugProtocol.Request) => Promise<string | boolean>
 type DebugHandlers = Record<string, DebugHandler>
@@ -132,33 +129,27 @@ function peripheralRegisterValue(s: Svd, p: SvdPeripheral, r: SvdRegister, data:
 }
 
 export class MinuteDebugSession extends DebugSession {
-  private _gdb?: GdbInstance
-  private server?: GdbServer
-  private smu?: Smu
+  private probe?: Probe
   private swo?: Swo
   private disassemblyCache?: DisassemblyCache
   private disposableStack = new AsyncDisposableStack()
   private varMap = new Map<string | number, GdbVariable>()
   private varNextRef = 1
   private cortex?: Cortex
-  private target!: TargetInfo
   private svdPromise?: Promise<Svd | undefined>
   private peripheralData = new Map<SvdPeripheral, Buffer[]>()
   private dapActive$ = new BehaviorSubject(0)
 
   get gdb(): GdbInstance {
-    const gdb = this._gdb
-    if (!gdb) {
-      throw new Error('GDB not started')
-    }
-    if (!gdb.running) {
-      throw new Error('GDB lost')
-    }
-    return gdb
+    return this.probe?.gdb ?? throwError(new Error('GDB not started'))
   }
 
   get command(): MiCommands {
     return this.gdb.command
+  }
+
+  get target(): TargetInfo {
+    return this.probe?.target ?? throwError(new Error('Not connected'))
   }
 
   async dispose() {
@@ -215,29 +206,20 @@ export class MinuteDebugSession extends DebugSession {
   }
 
   private async launchOrAttach(config: LaunchConfiguration, loadProgram: boolean) {
-    this._gdb = this.disposableStack.use(new GdbInstance(config))
-    this.server = this.disposableStack.use(createGdbServer(config))
-    this.smu = this.disposableStack.use(createSmu(config))
+    const probe = this.disposableStack.use(new Probe(config))
     this.swo = this.disposableStack.use(createSwo(config))
+
     await Promise.all([
-      this._gdb.start(await findExecutable('arm-none-eabi-gdb')),
-      this.server.start(),
-      this.smu?.connect(),
+      probe.connect(),
       this.swo?.connect(),
     ])
+    this.probe = probe
 
-    this.cortex = new Cortex(this.command)
-    await this.command.gdbSet('mi-async', 1)
-    await this.command.gdbSet('mem', 'inaccessible-by-default', 0)
-    await this.command.targetSelect('extended-remote', this.server.address)
-
-    this.target = await this.server.attach(this.command)
-
+    this.cortex = new Cortex(probe.command)
     this.svdPromise = this.getSvd(config.svd ?? [{ model: 'target' }])
-    await this.gdb.threadsStopped()
 
     if (config.swo && this.swo?.stream) {
-      await this.swo.enable?.(this.server, this.command)
+      await this.swo.enable?.(probe.server, probe.command)
 
       const swo = this.disposableStack.use(new SwoSession(config.swo, this.cortex, this.swo.stream, (swo) => {
         if (!swo.dwt && swo.ch === 0) {
@@ -247,32 +229,26 @@ export class MinuteDebugSession extends DebugSession {
       await swo.start()
     }
 
-    if (loadProgram && !this.server.skipLoad) {
-      if (config.smartLoad
-        && this.server.identity
-        && await smartLoadSkip(config.cwd, config.program, this.server.identity)) {
-        log.info('SmartLoad: program already loaded')
-      } else {
-        await progress('Loading program', async (p) => {
-          await this.command.targetDownload((status) => {
-            p.report(`section ${status.section}`, status.sectionSent / status.sectionSize)
-          })
+    if (loadProgram && !probe.server.skipLoad) {
+      await progress('Loading program', async (p) => {
+        await probe.load((message, fraction) => {
+          p.report(message, fraction)
         })
-      }
+      })
 
       // starti (executed via console) is tricky, because the running event comes only after
       // the command returns, so the 'threadsStopped' gate below is skipped immediately
       const startStopPromise = (async () => {
-        await this.gdb.threadsNotStopped()
-        await this.gdb.threadsStopped()
+        await probe.gdb.threadsNotStopped()
+        await probe.gdb.threadsStopped()
       })()
-      await this.command.console('starti')
+      await probe.command.console('starti')
       log.debug('starti complete')
       await startStopPromise
       log.debug('stopped after starti')
     }
 
-    await this.gdb.threadsStopped()
+    await probe.gdb.threadsStopped()
 
     this.sendEvent(new InitializedEvent())
 
@@ -280,11 +256,11 @@ export class MinuteDebugSession extends DebugSession {
     await this.idle(1)
 
     if (!config.stopAtConnect) {
-      await this.command.execContinue({ all: true })
-      await this.gdb.threadsNotStopped()
+      await probe.command.execContinue({ all: true })
+      await probe.gdb.threadsNotStopped()
     }
 
-    this.gdb.threads$.subscribe(() => {
+    probe.gdb.threads$.subscribe(() => {
       this.sendExecEvents()
     })
   }
