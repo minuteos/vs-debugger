@@ -7,6 +7,8 @@ import { getLog } from '@my/services'
 import { smartLoadSkip } from '@my/smart-load'
 import { createSmu } from '@my/smu/factory'
 import { Smu } from '@my/smu/smu'
+import { createSwo } from '@my/swo/factory'
+import { Swo } from '@my/swo/swo'
 import { DisposableContainer, findExecutable, throwError } from '@my/util'
 
 const log = getLog('Probe')
@@ -23,6 +25,7 @@ export class Probe extends DisposableContainer {
   private _gdb?: GdbInstance
   private _server?: GdbServer
   private _smu?: Smu
+  private _swo?: Swo
   private _target?: TargetInfo
 
   constructor(readonly config: LaunchConfiguration) {
@@ -45,6 +48,10 @@ export class Probe extends DisposableContainer {
     return this._smu
   }
 
+  get swo(): Swo | undefined {
+    return this._swo
+  }
+
   get target(): TargetInfo {
     return this._target ?? throwError(new Error('Probe not connected'))
   }
@@ -57,10 +64,12 @@ export class Probe extends DisposableContainer {
     this._gdb = this.use(new GdbInstance(this.config))
     this._server = this.use(createGdbServer(this.config))
     this._smu = this.use(createSmu(this.config))
+    this._swo = this.use(createSwo(this.config))
     await Promise.all([
       this._gdb.start(await findExecutable('arm-none-eabi-gdb')),
       this._server.start(),
       this._smu?.connect(),
+      this._swo?.connect(),
     ])
 
     await this.command.gdbSet('mi-async', 1)

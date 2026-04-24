@@ -9,8 +9,6 @@ import { Probe } from '@my/probe'
 import { getLog, getTrace, progress, traceEnabled } from '@my/services'
 import { Svd, SvdField, SvdPeripheral, SvdRegister } from '@my/services/svd'
 import { getSvd } from '@my/services/svd.cache'
-import { createSwo } from '@my/swo/factory'
-import { Swo } from '@my/swo/swo'
 import { color, delay, getWildcardMatcher, isTruthy, naturalCompare, throwError } from '@my/util'
 import { ContinuedEvent, DebugSession, InitializedEvent, Response, Scope, StoppedEvent, ThreadEvent, Variable } from '@vscode/debugadapter'
 import { DebugProtocol } from '@vscode/debugprotocol'
@@ -130,7 +128,6 @@ function peripheralRegisterValue(s: Svd, p: SvdPeripheral, r: SvdRegister, data:
 
 export class MinuteDebugSession extends DebugSession {
   private probe?: Probe
-  private swo?: Swo
   private disassemblyCache?: DisassemblyCache
   private disposableStack = new AsyncDisposableStack()
   private varMap = new Map<string | number, GdbVariable>()
@@ -207,21 +204,16 @@ export class MinuteDebugSession extends DebugSession {
 
   private async launchOrAttach(config: LaunchConfiguration, loadProgram: boolean) {
     const probe = this.disposableStack.use(new Probe(config))
-    this.swo = this.disposableStack.use(createSwo(config))
-
-    await Promise.all([
-      probe.connect(),
-      this.swo?.connect(),
-    ])
+    await probe.connect()
     this.probe = probe
 
     this.cortex = new Cortex(probe.command)
     this.svdPromise = this.getSvd(config.svd ?? [{ model: 'target' }])
 
-    if (config.swo && this.swo?.stream) {
-      await this.swo.enable?.(probe.server, probe.command)
+    if (config.swo && probe.swo?.stream) {
+      await probe.swo.enable?.(probe.server, probe.command)
 
-      const swo = this.disposableStack.use(new SwoSession(config.swo, this.cortex, this.swo.stream, (swo) => {
+      const swo = this.disposableStack.use(new SwoSession(config.swo, this.cortex, probe.swo.stream, (swo) => {
         if (!swo.dwt && swo.ch === 0) {
           vscode.debug.activeDebugConsole.append(swo.data.toString())
         }
