@@ -4,12 +4,13 @@ import { GdbServer, TargetInfo } from '@my/gdb-server/gdb-server'
 import { GdbInstance } from '@my/gdb/instance'
 import { MiCommands } from '@my/gdb/mi.commands'
 import { getLog } from '@my/services'
-import { smartLoadSkip } from '@my/smart-load'
 import { createSmu } from '@my/smu/factory'
 import { Smu } from '@my/smu/smu'
 import { createSwo } from '@my/swo/factory'
 import { Swo } from '@my/swo/swo'
 import { DisposableContainer, findExecutable, throwError } from '@my/util'
+
+import { smartLoadSkip } from './smart-load'
 
 const log = getLog('Probe')
 

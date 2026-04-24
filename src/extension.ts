@@ -1,4 +1,4 @@
-import { flash, MinuteDebugApi } from '@my/flash'
+import { flash, MinuteDebugApi } from '@my/probe/flash'
 import { configureVsCodeStorage } from '@my/services/storage'
 import 'disposablestack/auto'
 import * as vscode from 'vscode'
@@ -25,4 +25,4 @@ export function deactivate() {
   console.log('Deactivating minuteDebug...')
 }
 
-export type { FlashOptions, FlashResult, MinuteDebugApi } from '@my/flash'
+export type { FlashOptions, FlashResult, MinuteDebugApi } from '@my/probe/flash'

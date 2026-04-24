@@ -1,7 +1,8 @@
 import { expandConfiguration, ServerConfiguration, SmuConfiguration } from '@my/configuration'
 import { DebugError, ErrorCode } from '@my/errors'
-import { Probe } from '@my/probe'
 import { getLog, progress } from '@my/services'
+
+import { Probe } from './probe'
 
 const log = getLog('Flash')
 
