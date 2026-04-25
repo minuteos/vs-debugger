@@ -21,7 +21,8 @@
       "type": "string",
       "enum": [
         "qemu",
-        "bmp"
+        "bmp",
+        "renode"
       ]
     },
     "smu": {

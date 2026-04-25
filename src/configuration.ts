@@ -8,6 +8,7 @@ import { mergeDefaults, throwError } from '@my/util'
 export enum ServerType {
   Qemu = 'qemu',
   Bmp = 'bmp',
+  Renode = 'renode',
 }
 
 export interface QemuServerConfiguration {
@@ -22,7 +23,26 @@ export interface BmpServerConfiguration extends DeviceMatch {
   power?: boolean
 }
 
-export type ServerConfiguration = QemuServerConfiguration | BmpServerConfiguration
+export interface RenodeServerConfiguration {
+  type: 'renode'
+
+  /** Path to the renode executable; falls back to PATH lookup of "renode". */
+  executable?: string
+
+  /** .resc script to `include` after the monitor connects. */
+  script?: string
+
+  /** Monitor commands to run after the script (and before StartGdbServer). */
+  commands?: string[]
+
+  /** Selects the active machine in multi-machine setups via `mach set`. */
+  machine?: string
+
+  /** Extra command-line arguments appended after the defaults. */
+  extraArgs?: string[]
+}
+
+export type ServerConfiguration = BmpServerConfiguration | QemuServerConfiguration | RenodeServerConfiguration
 
 export enum SmuType {
   StLink = 'stlink',
