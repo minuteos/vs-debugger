@@ -38,9 +38,13 @@ export class RenodeGdbServer extends GdbServer<RenodeGdbServerOptions> {
     this.address = `${LOCALHOST}:${gdbPort.toString()}`
 
     const executable = serverConfig.executable ?? await findExecutable('renode')
+    // --disable-gui: headless (also implies HideMonitor)
+    // -p: plain output (no ANSI steering codes on the control port)
+    // -P: listen for Monitor commands on the given TCP port
     const args = [
-      '--disable-xwt',
-      '--port', monitorPort.toString(),
+      '--disable-gui',
+      '-p',
+      '-P', monitorPort.toString(),
       ...serverConfig.extraArgs ?? [],
     ]
 
