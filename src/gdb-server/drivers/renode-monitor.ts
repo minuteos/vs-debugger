@@ -7,12 +7,11 @@ import { promisify } from 'util'
 const log = getLog('Renode-Monitor')
 const trace = getTrace('Renode-Monitor')
 
-// Renode's --port endpoint speaks raw TCP (no telnet IAC) but sprinkles ANSI
-// CSI sequences into the output. The end of every monitor reply is a prompt
-// of the form "(<context>) " with no trailing newline, where <context> is
-// either "monitor" or the current machine name.
-// eslint-disable-next-line no-control-regex
-const ANSI_CSI = /\[[0-?]*[ -/]*[@-~]/g
+// Renode's --port endpoint speaks raw TCP (no telnet IAC). We pass `-p` on
+// the renode command line so the monitor emits plain text, avoiding ANSI
+// steering codes. Each reply ends with a prompt of the form "(<context>) "
+// with no trailing newline, where <context> is "monitor" or the active
+// machine name.
 const PROMPT = /\(([^)\r\n]+)\) $/
 
 interface PendingCommand extends PromiseWithResolvers<string> {
@@ -151,9 +150,7 @@ export class RenodeMonitor extends DisposableContainer {
         if (!Buffer.isBuffer(chunk)) {
           continue
         }
-        // ANSI sequences may straddle chunk boundaries; we strip per-chunk
-        // since Renode never splits them across the network in practice.
-        const text = chunk.toString('utf8').replace(ANSI_CSI, '')
+        const text = chunk.toString('utf8')
         trace('<', text)
         this.consume(text)
       }
