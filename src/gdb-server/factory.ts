@@ -2,11 +2,13 @@ import { LaunchConfiguration } from '@my/configuration'
 
 import { BmpGdbServer } from './drivers/bmp'
 import { QemuGdbServer } from './drivers/qemu'
+import { RenodeGdbServer } from './drivers/renode'
 import { GdbServer } from './gdb-server'
 
 const typeMap = {
   qemu: QemuGdbServer,
   bmp: BmpGdbServer,
+  renode: RenodeGdbServer,
 }
 
 export function createGdbServer(launchConfig: LaunchConfiguration): GdbServer {

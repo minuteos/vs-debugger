@@ -18,6 +18,9 @@ export const defaults: Settings = Object.freeze<Settings>({
     qemu: {
       type: 'qemu',
     },
+    renode: {
+      type: 'renode',
+    },
   },
   smu: {
     stlink: {
