@@ -69,7 +69,7 @@
     {
       "label": "test install",
       "type": "shell",
-      "command": "vsce package && code --install-extension *.vsix --profile ARM --force"
+      "command": "npm run vsix && code --install-extension *.vsix --profile ARM --force"
     }
   ]
 }

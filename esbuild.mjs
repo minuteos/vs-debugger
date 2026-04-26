@@ -53,7 +53,8 @@ const ctx = await esbuild.context({
 
 if (packages) {
   await fs.mkdir('dist', { recursive: true })
-  await buildPackageJson('package.json', 'dist/package.json')
+  await buildPackageJson('package.json', 'package.json')
+  await fs.copyFile('package.json', 'dist/package.json')
   await fs.copyFile('package-lock.json', 'dist/package-lock.json')
   await child_process.spawn('npm', ['install', '--ignore-scripts', '--omit', 'dev'], {
     cwd: 'dist',
@@ -100,5 +101,5 @@ async function buildPackageJson(src, dst) {
 
   const pkg = JSON.parse(await fs.readFile(src))
   await process(pkg, src)
-  await fs.writeFile(dst, JSON.stringify(pkg, undefined, 2))
+  await fs.writeFile(dst, JSON.stringify(pkg, undefined, 2) + '\n')
 }
