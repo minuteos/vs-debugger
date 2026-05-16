@@ -8,11 +8,21 @@ const log = getLog('Settings')
 const trace = getTrace('Settings')
 
 export interface Settings {
+  /** Enable trace output for the listed components. */
   trace: string[]
+
+  /** Named GDB server presets, referenced by name from a launch configuration's `server`. */
   server: Record<string, ServerConfiguration>
+
+  /** Named source-measure unit presets, referenced by name from a launch configuration's `smu`. */
   smu: Record<string, SmuConfiguration>
+
+  /** Named SWO/SWV trace presets, referenced by name from a launch configuration's `swo`. */
   swo: Record<string, SwoConfiguration>
+
+  /** Defaults merged into every launch configuration. */
   defaults: {
+    /** Fields applied to a launch/attach configuration when it does not specify them. */
     launch: Partial<InputLaunchConfiguration>
   }
 }
