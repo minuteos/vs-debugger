@@ -7,12 +7,29 @@ import { promisify } from 'util'
 const log = getLog('Renode-Monitor')
 const trace = getTrace('Renode-Monitor')
 
-// Renode's --port endpoint speaks raw TCP (no telnet IAC). We pass `-p` on
-// the renode command line so the monitor emits plain text, avoiding ANSI
-// steering codes. Each reply ends with a prompt of the form "(<context>) "
-// with no trailing newline, where <context> is "monitor" or the active
-// machine name.
-const PROMPT = /\(([^)\r\n]+)\) $/
+// Renode's -P endpoint is a Telnet server (it logs "Monitor available in
+// telnet mode"). It negotiates options on connect and emits IAC GA after
+// every prompt, so the bytes must go through a Telnet filter before any
+// text parsing. We also pass `-p` to renode so there are no ANSI codes.
+//
+// Each reply ends with a prompt of the form "(<context>) " with no trailing
+// newline, where <context> is "monitor" or the active machine name. Trailing
+// spaces are tolerated for robustness across renode versions.
+const PROMPT = /\(([^)\r\n]+)\) *$/
+
+// Keep enough recent banner text to spot the first prompt without growing
+// unbounded if renode logs to the monitor connection before any command.
+const BANNER_WINDOW = 4096
+
+// Telnet protocol bytes (RFC 854). Plain constants rather than an enum so
+// they compare cleanly against raw buffer bytes under strict lint rules.
+const TN_SE = 240
+const TN_SB = 250
+const TN_WILL = 251
+const TN_WONT = 252
+const TN_DO = 253
+const TN_DONT = 254
+const TN_IAC = 255
 
 interface PendingCommand extends PromiseWithResolvers<string> {
   command: string
@@ -31,11 +48,12 @@ interface RenodeMonitorOptions {
 }
 
 /**
- * TCP client for Renode's monitor (the "--port" / control endpoint).
+ * Telnet client for Renode's monitor (the "-P" / control endpoint).
  *
- * Speaks the same line-oriented command protocol a user would see in the
- * interactive monitor, with command serialization, ANSI stripping and prompt
- * detection so callers get a clean text response per command.
+ * Handles Telnet option negotiation transparently and exposes the same
+ * line-oriented command protocol a user sees in the interactive monitor,
+ * with command serialization and prompt detection so callers get one clean
+ * text response per command.
  */
 export class RenodeMonitor extends DisposableContainer {
   private socket?: Socket
@@ -44,6 +62,7 @@ export class RenodeMonitor extends DisposableContainer {
   private pending?: PendingCommand
   private readonly readySignal = new Signal()
   private context = 'monitor'
+  private banner = ''
   private done = false
 
   constructor(private readonly opts: RenodeMonitorOptions) {
@@ -112,7 +131,7 @@ export class RenodeMonitor extends DisposableContainer {
       this.pending = pending
 
       trace('>', command)
-      await send(command + '\n')
+      await send(command + '\r\n') // Telnet line terminator
 
       const timeout = setTimeout(() => {
         pending.reject(new Error(`Renode monitor command timed out: ${command}`))
@@ -145,12 +164,17 @@ export class RenodeMonitor extends DisposableContainer {
 
   private async receiver(socket: Socket): Promise<void> {
     log.debug('Starting monitor receiver')
+    const telnet = new TelnetFilter(data => socket.write(data))
     try {
       for await (const chunk of socket) {
         if (!Buffer.isBuffer(chunk)) {
           continue
         }
-        const text = chunk.toString('utf8')
+        const clean = telnet.process(chunk)
+        if (!clean.length) {
+          continue
+        }
+        const text = clean.toString('utf8')
         trace('<', text)
         this.consume(text)
       }
@@ -178,12 +202,82 @@ export class RenodeMonitor extends DisposableContainer {
       return
     }
 
-    // No command in flight - this is banner output or async monitor logging.
-    const m = PROMPT.exec(text)
+    // No command in flight - this is the connect-time banner. Accumulate a
+    // bounded window so a prompt split across chunks is still detected.
+    this.banner = (this.banner + text).slice(-BANNER_WINDOW)
+    const m = PROMPT.exec(this.banner)
     if (m) {
       this.context = m[1]
+      this.banner = ''
       this.readySignal.resolve(true)
     }
+  }
+}
+
+/**
+ * Minimal Telnet stream filter: strips IAC command sequences (including the
+ * GA that Renode emits after each prompt), refuses all option negotiation so
+ * the server stops asking, and unescapes literal 0xFF. Partial sequences are
+ * carried over across chunk boundaries.
+ */
+class TelnetFilter {
+  private leftover = Buffer.alloc(0)
+
+  constructor(private readonly respond: (data: Buffer) => void) {}
+
+  process(input: Buffer): Buffer {
+    const bytes = this.leftover.length ? Buffer.concat([this.leftover, input]) : input
+    this.leftover = Buffer.alloc(0)
+
+    const out: number[] = []
+    let i = 0
+    while (i < bytes.length) {
+      const b = bytes[i]
+      if (b !== TN_IAC) {
+        out.push(b)
+        i++
+        continue
+      }
+
+      if (i + 1 >= bytes.length) {
+        this.leftover = bytes.subarray(i)
+        break
+      }
+
+      const cmd = bytes[i + 1]
+      if (cmd === TN_IAC) {
+        out.push(TN_IAC) // escaped literal 0xFF
+        i += 2
+      } else if (cmd === TN_SB) {
+        // Subnegotiation: skip until IAC SE.
+        let j = i + 2
+        while (j + 1 < bytes.length && !(bytes[j] === TN_IAC && bytes[j + 1] === TN_SE)) {
+          j++
+        }
+        if (j + 1 >= bytes.length) {
+          this.leftover = bytes.subarray(i)
+          break
+        }
+        i = j + 2
+      } else if (cmd === TN_WILL || cmd === TN_WONT || cmd === TN_DO || cmd === TN_DONT) {
+        if (i + 2 >= bytes.length) {
+          this.leftover = bytes.subarray(i)
+          break
+        }
+        const opt = bytes[i + 2]
+        // Refuse everything to terminate negotiation without loops.
+        if (cmd === TN_DO) {
+          this.respond(Buffer.from([TN_IAC, TN_WONT, opt]))
+        } else if (cmd === TN_WILL) {
+          this.respond(Buffer.from([TN_IAC, TN_DONT, opt]))
+        }
+        i += 3
+      } else {
+        // Other 2-byte commands (GA, NOP, ...) carry no payload - drop them.
+        i += 2
+      }
+    }
+    return Buffer.from(out)
   }
 }
 
