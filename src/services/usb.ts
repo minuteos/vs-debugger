@@ -9,8 +9,13 @@ const log = getLog('USB')
 const trace = getTrace('USB')
 
 export interface UsbInterfaceMatch extends DeviceMatch {
+  /** Match the USB configuration name. */
   configuration?: MatchValueOrFunction<string>
+
+  /** Match the USB interface name. */
   interface?: MatchValueOrFunction<string>
+
+  /** Match the endpoint(s) carrying the data. */
   endpoints?: MatchValueOrFunction<EndpointCriteria>
 }
 
@@ -24,8 +29,13 @@ export enum EndpointDirection {
 }
 
 export interface EndpointCriteria {
+  /** Endpoint address. */
   address?: MatchValueOrFunction<number>
+
+  /** Transfer type (0 = Control, 1 = Isochronous, 2 = Bulk, 3 = Interrupt). */
   type?: MatchValueOrFunction<TransferType>
+
+  /** Endpoint direction (128 = In, 0 = Out). */
   direction?: MatchValueOrFunction<EndpointDirection>
 }
 

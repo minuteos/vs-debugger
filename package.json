@@ -31,9 +31,7 @@
   "contributes": {
     "configuration": {
       "title": "minuteDebug",
-      "properties": {
-        "$$include": "schema/settings.json"
-      }
+      "properties": {}
     },
     "breakpoints": [
       {
@@ -48,12 +46,8 @@
         "label": "minuteDebug",
         "type": "minute-debug",
         "configurationAttributes": {
-          "launch": {
-            "$$include": "schema/launch.json"
-          },
-          "attach": {
-            "$$include": "schema/attach.json"
-          }
+          "launch": {},
+          "attach": {}
         },
         "languages": [
           "c",
@@ -101,6 +95,7 @@
     "lint-staged": "^15.4.1",
     "npm-run-all": "^4.1.5",
     "rxjs": "^7.8.1",
+    "ts-json-schema-generator": "^2.9.0",
     "typescript": "^5.7.3",
     "typescript-eslint": "^8.21.0",
     "xml2js": "^0.6.2"

@@ -9,6 +9,7 @@ const log = getLog('Serial')
 const trace = getTrace('Serial')
 
 export interface PortMatch extends DeviceMatch {
+  /** Match the n-th matching port. */
   index?: MatchValueOrFunction<number>
 }
 

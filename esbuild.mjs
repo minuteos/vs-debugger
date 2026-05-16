@@ -1,7 +1,7 @@
 import child_process from 'child_process'
 import * as esbuild from 'esbuild'
 import fs from 'fs/promises'
-import path from 'path'
+import { createGenerator } from 'ts-json-schema-generator'
 
 const production = process.argv.includes('--production')
 const watch = process.argv.includes('--watch')
@@ -69,37 +69,53 @@ if (watch) {
   await ctx.dispose()
 }
 
+// The published package.json must inline real JSON schemas for the settings
+// and the launch/attach configurations. They are derived from the TypeScript
+// types (and their doc comments) so there is a single source of truth.
+function genSchema(type) {
+  function strip(node) {
+    if (Array.isArray(node)) {
+      node.forEach(strip)
+    } else if (node && typeof node === 'object') {
+      delete node.$schema
+      if (node.definitions && !Object.keys(node.definitions).length) {
+        delete node.definitions
+      }
+      for (const k in node) {
+        strip(node[k])
+      }
+    }
+    return node
+  }
+
+  return strip(createGenerator({
+    path: 'src/settings.ts',
+    tsconfig: 'tsconfig.json',
+    type,
+    functions: 'hide',
+    additionalProperties: true,
+    jsDoc: 'extended',
+    topRef: false,
+    expose: 'none',
+    skipTypeCheck: true,
+    sortProps: false,
+  }).createSchema(type))
+}
+
 async function buildPackageJson(src, dst) {
-  function merge(o, i) {
-    for (const k in i) {
-      if (typeof o[k] === 'object' && typeof i[k] === 'object') {
-        merge(o[k], i[k])
-      } else if (!(k in o)) {
-        o[k] = i[k]
-      }
-    }
-  }
-
-  async function process(o, relativeTo) {
-    const inc = o.$$include
-    delete o.$$include
-    delete o.$schema
-
-    for (const k in o) {
-      if (typeof o[k] === 'object') {
-        await process(o[k], relativeTo)
-      }
-    }
-
-    if (inc) {
-      const p = path.join(path.dirname(relativeTo), inc)
-      const i = JSON.parse(await fs.readFile(p))
-      await process(i, p)
-      merge(o, i)
-    }
-  }
-
   const pkg = JSON.parse(await fs.readFile(src))
-  await process(pkg, src)
+  const settings = genSchema('Settings')
+
+  pkg.contributes.configuration.properties = Object.fromEntries(
+    Object.entries(settings.properties).map(([k, v]) => [`minuteDebug.${k}`, v]),
+  )
+
+  for (const dbg of pkg.contributes.debuggers) {
+    dbg.configurationAttributes = {
+      launch: genSchema('InputLaunchConfiguration'),
+      attach: genSchema('InputLaunchConfiguration'),
+    }
+  }
+
   await fs.writeFile(dst, JSON.stringify(pkg, undefined, 2) + '\n')
 }

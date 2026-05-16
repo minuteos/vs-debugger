@@ -12,13 +12,21 @@ export enum ServerType {
 
 export interface QemuServerConfiguration {
   type: 'qemu'
+
+  /** QEMU machine to emulate. */
   machine?: string
+
+  /** QEMU CPU to emulate. */
   cpu?: string
 }
 
 export interface BmpServerConfiguration extends DeviceMatch {
   type: 'bmp'
+
+  /** Serial port of the Black Magic Probe. Auto-detected when omitted. */
   port?: string
+
+  /** Supply target power from the probe. */
   power?: boolean
 }
 
@@ -30,42 +38,80 @@ export enum SmuType {
 
 export interface StlinkSmuConfiguration extends PortMatch {
   type: 'stlink'
+
+  /** Serial port of the SMU. Auto-detected when omitted. */
   port?: string
-  output: string /** vout or vaux */
+
+  /** Output channel to drive (e.g. `vout` or `vaux`). */
+  output: string
+
+  /** Output voltage in volts. */
   voltage: number
+
+  /** Turn the output on when the debug session starts. */
   startPowerOn: boolean
+
+  /** Turn the output off when the debug session ends. */
   stopPowerOff: boolean
 }
 
 export type SmuConfiguration = StlinkSmuConfiguration
 
 export interface CommonSwoConfiguration {
+  /** Target CPU frequency in Hz. 0 keeps the probe default. */
   cpuFrequency: number
+
+  /** SWO/SWV bitrate in Hz. */
   swvFrequency: number
+
+  /** SWV encoding (1 = Manchester, 2 = UART). */
   format: SwvFormat
 }
 
 export interface BmpSwoConfiguration extends DeviceMatch, CommonSwoConfiguration {
   type: 'bmp'
+
+  /** USB interface carrying the SWO stream. */
   port: UsbInterfaceMatch
 }
 
 export type SwoConfiguration = BmpSwoConfiguration
 
 export interface SvdConfiguration {
+  /** SVD model name. */
   model: string
+
+  /** Restrict to matching peripherals. */
   peripherals?: string | string[]
 }
 
 export interface InputLaunchConfiguration {
+  /** GDB server: a preset name from `minuteDebug.server`, or an inline server configuration. */
   server?: string | ServerConfiguration
+
+  /** Source-measure unit: a preset name from `minuteDebug.smu`, or an inline configuration. */
   smu?: string | SmuConfiguration
+
+  /** SWO/SWV trace: a preset name from `minuteDebug.swo`, or an inline configuration. */
   swo?: string | SwoConfiguration
+
+  /** SVD: a model name, or a list of `{ model, peripherals }` layers. */
   svd?: string | SvdConfiguration[]
+
+  /** Working directory for the debug session. */
   cwd?: string
+
+  /** Environment variables. */
   env?: Record<string, string>
+
+  /** Program (ELF) to debug. */
   program: string
+
+  /** Only flash sections that differ from the device contents. */
   smartLoad?: boolean
+
+  /** Keep the target halted after connecting instead of resuming execution. */
+  stopAtConnect?: boolean
 }
 
 export interface LaunchConfiguration {
