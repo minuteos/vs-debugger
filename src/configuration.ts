@@ -57,6 +57,10 @@ export interface StlinkSmuConfiguration extends PortMatch {
 
 export type SmuConfiguration = StlinkSmuConfiguration
 
+export enum SwoType {
+  Bmp = 'bmp',
+}
+
 export interface CommonSwoConfiguration {
   /** Target CPU frequency in Hz. 0 keeps the probe default. */
   cpuFrequency: number
@@ -87,13 +91,13 @@ export interface SvdConfiguration {
 
 export interface InputLaunchConfiguration {
   /** GDB server: a preset name from `minuteDebug.server`, or an inline server configuration. */
-  server?: string | ServerConfiguration
+  server?: ServerType | (string & {}) | ServerConfiguration
 
   /** Source-measure unit: a preset name from `minuteDebug.smu`, or an inline configuration. */
-  smu?: string | SmuConfiguration
+  smu?: SmuType | (string & {}) | SmuConfiguration
 
   /** SWO/SWV trace: a preset name from `minuteDebug.swo`, or an inline configuration. */
-  swo?: string | SwoConfiguration
+  swo?: SwoType | (string & {}) | SwoConfiguration
 
   /** SVD: a model name, or a list of `{ model, peripherals }` layers. */
   svd?: string | SvdConfiguration[]
@@ -126,7 +130,7 @@ export interface LaunchConfiguration {
   stopAtConnect?: boolean
 }
 
-function lookup<T extends { type: string } | undefined>(table: Record<string, T>, cfg?: string | T): T | undefined {
+function lookup<T extends { type: string } | undefined>(table: Record<string, T>, cfg?: string | NoInfer<T>): T | undefined {
   if (cfg === undefined) {
     return undefined
   }
