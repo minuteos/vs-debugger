@@ -1,4 +1,5 @@
 import { RenodeServerConfiguration } from '@my/configuration'
+import { FramebufferDisplay } from '@my/display/framebuffer-display'
 import { ChildProcess, getLog } from '@my/services'
 import { allocateTcpPort, findExecutable, pick, throwError } from '@my/util'
 
@@ -40,7 +41,8 @@ export class RenodeGdbServer extends GdbServer<RenodeGdbServerOptions> {
     this.address = `${LOCALHOST}:${gdbPort.toString()}`
 
     const executable = serverConfig.executable ?? await findExecutable('renode')
-    // --disable-gui: headless (also implies HideMonitor)
+    // --disable-gui: headless (also implies HideMonitor). The display is
+    // streamed out via the framebuffer bridge, so we stay headless.
     // -p: plain output (no ANSI steering codes on the control port)
     // -P: listen for Monitor commands on the given TCP port
     const args = [
@@ -111,6 +113,17 @@ export class RenodeGdbServer extends GdbServer<RenodeGdbServerOptions> {
         + 'or supply equivalent "server.renode.commands".\n\n'
         + (err instanceof Error ? err.message : String(err)),
       )
+    }
+
+    if (serverConfig.display) {
+      // .repl references a peripheral by its variable name, not its sysbus
+      // path, so strip a leading "sysbus.".
+      const videoRef = (serverConfig.display.peripheral ?? 'sysbus.lcd').replace(/^sysbus\./, '')
+      const fb = this.use(new FramebufferDisplay())
+      await fb.start()
+      const { cs, repl } = await fb.materializeOverlay(videoRef)
+      await this.includeFile(cs)
+      await this.loadPlatformOverlay(repl)
     }
   }
 

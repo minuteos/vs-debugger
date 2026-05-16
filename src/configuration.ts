@@ -31,11 +31,25 @@ export interface BmpServerConfiguration extends DeviceMatch {
   power?: boolean
 }
 
+export interface RenodeDisplayConfiguration {
+  /**
+   * Video peripheral whose framebuffer is streamed to the display webview.
+   * Defaults to "sysbus.lcd".
+   */
+  peripheral?: string
+}
+
 export interface RenodeServerConfiguration {
   type: 'renode'
 
   /** Path to the renode executable; falls back to PATH lookup of "renode". */
   executable?: string
+
+  /**
+   * Stream the emulated framebuffer into a VS Code webview tab. Renode
+   * stays headless; frames are pushed out over a local socket bridge.
+   */
+  display?: RenodeDisplayConfiguration
 
   /** .resc script to `include` after the monitor connects. */
   script?: string
