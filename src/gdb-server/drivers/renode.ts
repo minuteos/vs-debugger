@@ -16,8 +16,10 @@ const MONITOR_CONNECT_TIMEOUT_MS = 30000
 // session teardown if it's stuck.
 const QUIT_TIMEOUT_MS = 2000
 
-// Standard Renode error prefix; specific enough to avoid false positives.
-const RENODE_ERROR = /^There was an error/m
+// Renode's monitor has no structured success/failure channel over telnet, so
+// we detect its standard error line prefixes. All are line-anchored and
+// specific enough to avoid matching ordinary command output.
+const RENODE_ERROR = /^(There was an error|No such command or device:|Internal error|Bad parameters)/m
 
 interface RenodeGdbServerOptions extends GdbServerOptions {
   serverConfig: RenodeServerConfiguration
@@ -97,7 +99,19 @@ export class RenodeGdbServer extends GdbServer<RenodeGdbServerOptions> {
     }
 
     log.info('Starting Renode GDB server on port', gdbPort)
-    await this.runMonitor(`machine StartGdbServer ${gdbPort.toString()}`)
+    try {
+      await this.runMonitor(`machine StartGdbServer ${gdbPort.toString()}`)
+    } catch (err) {
+      // The usual cause is no current machine: unlike QEMU, Renode can't
+      // infer a platform - the user must create and select one.
+      throw new Error(
+        'Could not start the Renode GDB server. Renode needs a machine '
+        + 'before debugging: point "server.renode.script" at a .resc that '
+        + 'runs `mach create`, loads a platform description and your program, '
+        + 'or supply equivalent "server.renode.commands".\n\n'
+        + (err instanceof Error ? err.message : String(err)),
+      )
+    }
   }
 
   attach(): Promise<TargetInfo> {
