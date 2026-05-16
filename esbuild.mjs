@@ -51,9 +51,13 @@ const ctx = await esbuild.context({
   ],
 })
 
+// Always regenerate so the Extension Development Host sees the schema. The
+// generated content is kept out of git by the `schemagen` clean filter
+// (.gitattributes / scripts/strip-schema.mjs).
+await buildPackageJson('package.json', 'package.json')
+
 if (packages) {
   await fs.mkdir('dist', { recursive: true })
-  await buildPackageJson('package.json', 'package.json')
   await fs.copyFile('package.json', 'dist/package.json')
   await fs.copyFile('package-lock.json', 'dist/package-lock.json')
   await child_process.spawn('npm', ['install', '--ignore-scripts', '--omit', 'dev'], {
