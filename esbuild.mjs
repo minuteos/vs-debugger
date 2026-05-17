@@ -40,6 +40,9 @@ const ctx = await esbuild.context({
   platform: 'node',
   target: 'es2022',
   outfile: 'dist/extension.js',
+  loader: {
+    '.cs': 'text',
+  },
   external: [
     'vscode',
     'usb',

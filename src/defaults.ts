@@ -46,6 +46,14 @@ export const defaults: Settings = Object.freeze<Settings>({
         endpoints: { type: TransferType.Bulk, direction: EndpointDirection.In },
       },
     },
+    renode: {
+      // Renode's overlaid ITM peripheral ignores the SWV timing/encoding; the
+      // values only keep cortex.setupTrace() from computing a NaN divisor.
+      type: 'renode',
+      cpuFrequency: 0,
+      swvFrequency: 100000,
+      format: SwvFormat.Manchester,
+    },
   },
   defaults: {
     launch: {},

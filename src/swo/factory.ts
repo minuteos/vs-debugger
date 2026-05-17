@@ -1,10 +1,12 @@
 import { LaunchConfiguration } from '@my/configuration'
 
 import { BmpSwo } from './drivers/bmp'
+import { RenodeSwo } from './drivers/renode'
 import { Swo } from './swo'
 
 const typeMap = {
   bmp: BmpSwo,
+  renode: RenodeSwo,
 }
 
 export function createSwo(launchConfig: LaunchConfiguration): Swo | undefined {
@@ -18,5 +20,5 @@ export function createSwo(launchConfig: LaunchConfiguration): Swo | undefined {
   }
 
   const type = typeMap[swo.type]
-  return new type({ launchConfig, swoConfig: swo })
+  return new type({ launchConfig, swoConfig: swo as never })
 }

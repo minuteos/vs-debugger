@@ -114,6 +114,23 @@ export class RenodeGdbServer extends GdbServer<RenodeGdbServerOptions> {
     }
   }
 
+  /**
+   * Compiles and loads a C# peripheral source file into the running emulator
+   * so its types become referenceable from a `.repl`.
+   */
+  async includeFile(sourcePath: string): Promise<void> {
+    await this.runMonitor(`i @${sourcePath}`)
+  }
+
+  /**
+   * Overlays extra peripherals onto the running machine from a `.repl` file.
+   * Used by the Renode SWO driver to graft an ITM capture peripheral on top
+   * of the user's platform without touching their `.resc`.
+   */
+  async loadPlatformOverlay(replPath: string): Promise<void> {
+    await this.runMonitor(`machine LoadPlatformDescription @${replPath}`)
+  }
+
   attach(): Promise<TargetInfo> {
     // After StartGdbServer the monitor's current context is the machine name,
     // which is the closest thing to a "model" identifier Renode exposes.
