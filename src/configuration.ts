@@ -79,6 +79,7 @@ export type SmuConfiguration = StlinkSmuConfiguration
 
 export enum SwoType {
   Bmp = 'bmp',
+  Renode = 'renode',
 }
 
 export interface CommonSwoConfiguration {
@@ -99,7 +100,11 @@ export interface BmpSwoConfiguration extends DeviceMatch, CommonSwoConfiguration
   port: UsbInterfaceMatch
 }
 
-export type SwoConfiguration = BmpSwoConfiguration
+export interface RenodeSwoConfiguration extends CommonSwoConfiguration {
+  type: 'renode'
+}
+
+export type SwoConfiguration = BmpSwoConfiguration | RenodeSwoConfiguration
 
 export interface SvdConfiguration {
   /** SVD model name. */
